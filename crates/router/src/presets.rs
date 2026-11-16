@@ -226,6 +226,8 @@ pub struct VendorPreset {
     pub anthropic: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gemini: Option<&'static str>,
+    /// An i18n key the console translates for its tile tooltip and
+    /// editor head, like the reference's `t(pr.note)`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -235,6 +237,11 @@ pub struct VendorPreset {
     /// and the link stays hidden.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keys_url: Option<&'static str>,
+    /// The vendor's own page the console's editor head links, mirroring
+    /// the reference: it follows the region picked, and vendors without
+    /// a confident page leave this empty so no link shows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub website: Option<&'static str>,
 }
 
 /// The logo file served for a vendor id, vendored from the reference
@@ -286,46 +293,46 @@ pub fn vendor_icon(id: &str) -> Option<&'static str> {
 /// shapes are certain belong here; entries with a per-customer host
 /// say so in `note`.
 pub const VENDORS: &[VendorPreset] = &[
-    VendorPreset { id: "openai", name: "OpenAI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.openai.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://platform.openai.com/api-keys") },
-    VendorPreset { id: "anthropic", name: "Anthropic", short: None, kind: VendorKind::Vendor, protocol: "anthropic", chat: None, responses: None, anthropic: Some("https://api.anthropic.com"), gemini: None, note: None, pair: None, keys_url: Some("https://console.anthropic.com/settings/keys") },
-    VendorPreset { id: "gemini", name: "Google Gemini", short: None, kind: VendorKind::Vendor, protocol: "gemini", chat: None, responses: None, anthropic: None, gemini: Some("https://generativelanguage.googleapis.com/v1beta"), note: None, pair: None, keys_url: Some("https://aistudio.google.com/apikey") },
-    VendorPreset { id: "deepseek", name: "DeepSeek", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.deepseek.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://platform.deepseek.com/api_keys") },
-    VendorPreset { id: "moonshot", name: "Moonshot AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.moonshot.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("moonshot"), keys_url: Some("https://platform.moonshot.ai/console/api-keys") },
-    VendorPreset { id: "moonshot-cn", name: "Moonshot AI 中国版", short: Some("Moonshot AI"), kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.moonshot.cn/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("moonshot"), keys_url: Some("https://platform.moonshot.cn/console/api-keys") },
-    VendorPreset { id: "qwen", name: "通义千问 Qwen", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://dashscope.aliyuncs.com/compatible-mode/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://bailian.console.aliyun.com/?apiKey=1") },
-    VendorPreset { id: "zhipu", name: "智谱 GLM", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://open.bigmodel.ai/api/paas/v4/"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("zhipu"), keys_url: Some("https://open.bigmodel.ai/usercenter/apikeys") },
-    VendorPreset { id: "zhipu-cn", name: "智谱 GLM 中国版", short: Some("智谱 GLM"), kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://open.bigmodel.cn/api/paas/v4/"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("zhipu"), keys_url: Some("https://open.bigmodel.cn/usercenter/apikeys") },
-    VendorPreset { id: "doubao", name: "火山引擎 Doubao", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://ark.cn-beijing.volces.com/api/v3"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey") },
-    VendorPreset { id: "minimax", name: "MiniMax", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.minimax.io/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("minimax"), keys_url: None },
-    VendorPreset { id: "minimax-cn", name: "MiniMax 中国版", short: Some("MiniMax"), kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.minimaxi.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("minimax"), keys_url: None },
-    VendorPreset { id: "baidu", name: "百度千帆", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://qianfan.baidubce.com/v2"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "tencent", name: "腾讯混元", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.hunyuan.cloud.tencent.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.cloud.tencent.com/cam/capi") },
-    VendorPreset { id: "xunfei", name: "讯飞星火", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://spark-api-open.xf-yun.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "stepfun", name: "阶跃星辰", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.stepfun.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "yi", name: "零一万物", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.lingyiwanwu.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "mistral", name: "Mistral AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.mistral.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.mistral.ai/api-keys") },
-    VendorPreset { id: "xai", name: "xAI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.x.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "cohere", name: "Cohere", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.cohere.com/compatibility/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://dashboard.cohere.com/api-keys") },
-    VendorPreset { id: "perplexity", name: "Perplexity", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.perplexity.ai"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://www.perplexity.ai/settings/api") },
-    VendorPreset { id: "azure", name: "Azure OpenAI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://YOUR-RESOURCE.openai.azure.com/openai/deployments"), responses: None, anthropic: None, gemini: None, note: Some("把 YOUR-RESOURCE 换成你的资源名，并补全 deployment 与 api-version 路径"), pair: None, keys_url: Some("https://portal.azure.com/") },
-    VendorPreset { id: "groq", name: "Groq", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.groq.com/openai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.groq.com/keys") },
-    VendorPreset { id: "cerebras", name: "Cerebras", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.cerebras.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "sambanova", name: "SambaNova", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.sambanova.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "together", name: "Together AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.together.xyz/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://api.together.ai/settings/api-keys") },
-    VendorPreset { id: "fireworks", name: "Fireworks AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.fireworks.ai/inference/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "nvidia", name: "NVIDIA NIM", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://integrate.api.nvidia.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "github", name: "GitHub Models", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://models.github.ai/inference"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://github.com/settings/tokens") },
-    VendorPreset { id: "cline", name: "Cline", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.cline.bot/api/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "openrouter", name: "OpenRouter", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://openrouter.ai/api/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://openrouter.ai/settings/keys") },
-    VendorPreset { id: "siliconflow", name: "硅基流动", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://api.siliconflow.cn/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://cloud.siliconflow.cn/account/ak") },
-    VendorPreset { id: "302ai", name: "302.AI", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://api.302.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "aihubmix", name: "AiHubMix", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://aihubmix.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "packycode", name: "PackyCode", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://api.packycode.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "ollama", name: "Ollama", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:11434/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "lmstudio", name: "LM Studio", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:1234/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "llamacpp", name: "llama.cpp", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:8080/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "vllm", name: "vLLM", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:8000/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
-    VendorPreset { id: "xinference", name: "Xinference", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:9997/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None },
+    VendorPreset { id: "openai", name: "OpenAI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.openai.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://platform.openai.com/api-keys"), website: Some("https://platform.openai.com") },
+    VendorPreset { id: "anthropic", name: "Anthropic", short: None, kind: VendorKind::Vendor, protocol: "anthropic", chat: None, responses: None, anthropic: Some("https://api.anthropic.com"), gemini: None, note: None, pair: None, keys_url: Some("https://console.anthropic.com/settings/keys"), website: Some("https://console.anthropic.com") },
+    VendorPreset { id: "gemini", name: "Google Gemini", short: None, kind: VendorKind::Vendor, protocol: "gemini", chat: None, responses: None, anthropic: None, gemini: Some("https://generativelanguage.googleapis.com/v1beta"), note: None, pair: None, keys_url: Some("https://aistudio.google.com/apikey"), website: Some("https://aistudio.google.com") },
+    VendorPreset { id: "deepseek", name: "DeepSeek", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.deepseek.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://platform.deepseek.com/api_keys"), website: Some("https://platform.deepseek.com") },
+    VendorPreset { id: "moonshot", name: "Moonshot AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.moonshot.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("moonshot"), keys_url: Some("https://platform.moonshot.ai/console/api-keys"), website: Some("https://platform.kimi.ai") },
+    VendorPreset { id: "moonshot-cn", name: "Moonshot AI 中国版", short: Some("Moonshot AI"), kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.moonshot.cn/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("moonshot"), keys_url: Some("https://platform.moonshot.cn/console/api-keys"), website: Some("https://platform.kimi.com") },
+    VendorPreset { id: "qwen", name: "通义千问 Qwen", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://dashscope.aliyuncs.com/compatible-mode/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://bailian.console.aliyun.com/?apiKey=1"), website: Some("https://bailian.console.aliyun.com") },
+    VendorPreset { id: "zhipu", name: "智谱 GLM", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://open.bigmodel.ai/api/paas/v4/"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("zhipu"), keys_url: Some("https://open.bigmodel.ai/usercenter/apikeys"), website: None },
+    VendorPreset { id: "zhipu-cn", name: "智谱 GLM 中国版", short: Some("智谱 GLM"), kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://open.bigmodel.cn/api/paas/v4/"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("zhipu"), keys_url: Some("https://open.bigmodel.cn/usercenter/apikeys"), website: Some("https://open.bigmodel.cn") },
+    VendorPreset { id: "doubao", name: "火山引擎 Doubao", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://ark.cn-beijing.volces.com/api/v3"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey"), website: Some("https://www.volcengine.com/docs/82379/1925114") },
+    VendorPreset { id: "minimax", name: "MiniMax", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.minimax.io/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("minimax"), keys_url: None, website: Some("https://platform.minimax.io") },
+    VendorPreset { id: "minimax-cn", name: "MiniMax 中国版", short: Some("MiniMax"), kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.minimaxi.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: Some("minimax"), keys_url: None, website: Some("https://platform.minimaxi.com") },
+    VendorPreset { id: "baidu", name: "百度千帆", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://qianfan.baidubce.com/v2"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://cloud.baidu.com/doc/qianfan/s/Dmrabu8b6") },
+    VendorPreset { id: "tencent", name: "腾讯混元", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.hunyuan.cloud.tencent.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.cloud.tencent.com/cam/capi"), website: Some("https://cloud.tencent.com/document/product/1823/130060") },
+    VendorPreset { id: "xunfei", name: "讯飞星火", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://spark-api-open.xf-yun.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
+    VendorPreset { id: "stepfun", name: "阶跃星辰", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.stepfun.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://platform.stepfun.ai") },
+    VendorPreset { id: "yi", name: "零一万物", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.lingyiwanwu.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
+    VendorPreset { id: "mistral", name: "Mistral AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.mistral.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.mistral.ai/api-keys"), website: Some("https://console.mistral.ai") },
+    VendorPreset { id: "xai", name: "xAI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.x.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://console.x.ai") },
+    VendorPreset { id: "cohere", name: "Cohere", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.cohere.com/compatibility/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://dashboard.cohere.com/api-keys"), website: None },
+    VendorPreset { id: "perplexity", name: "Perplexity", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.perplexity.ai"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://www.perplexity.ai/settings/api"), website: None },
+    VendorPreset { id: "azure", name: "Azure OpenAI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://YOUR-RESOURCE.openai.azure.com/openai/deployments"), responses: None, anthropic: None, gemini: None, note: Some("prov.azureNote"), pair: None, keys_url: Some("https://portal.azure.com/"), website: Some("https://ai.azure.com") },
+    VendorPreset { id: "groq", name: "Groq", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.groq.com/openai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://console.groq.com/keys"), website: Some("https://console.groq.com") },
+    VendorPreset { id: "cerebras", name: "Cerebras", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.cerebras.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
+    VendorPreset { id: "sambanova", name: "SambaNova", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.sambanova.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
+    VendorPreset { id: "together", name: "Together AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.together.xyz/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://api.together.ai/settings/api-keys"), website: Some("https://api.together.ai") },
+    VendorPreset { id: "fireworks", name: "Fireworks AI", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.fireworks.ai/inference/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://fireworks.ai") },
+    VendorPreset { id: "nvidia", name: "NVIDIA NIM", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://integrate.api.nvidia.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://build.nvidia.com") },
+    VendorPreset { id: "github", name: "GitHub Models", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://models.github.ai/inference"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://github.com/settings/tokens"), website: Some("https://github.com") },
+    VendorPreset { id: "cline", name: "Cline", short: None, kind: VendorKind::Vendor, protocol: "chat", chat: Some("https://api.cline.bot/api/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://docs.cline.bot/getting-started/clinepass") },
+    VendorPreset { id: "openrouter", name: "OpenRouter", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://openrouter.ai/api/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://openrouter.ai/settings/keys"), website: Some("https://openrouter.ai") },
+    VendorPreset { id: "siliconflow", name: "硅基流动", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://api.siliconflow.cn/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: Some("https://cloud.siliconflow.cn/account/ak"), website: Some("https://cloud.siliconflow.cn") },
+    VendorPreset { id: "302ai", name: "302.AI", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://api.302.ai/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://302.ai") },
+    VendorPreset { id: "aihubmix", name: "AiHubMix", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://aihubmix.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://aihubmix.com") },
+    VendorPreset { id: "packycode", name: "PackyCode", short: None, kind: VendorKind::Relay, protocol: "chat", chat: Some("https://api.packycode.com/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
+    VendorPreset { id: "ollama", name: "Ollama", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:11434/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://ollama.com") },
+    VendorPreset { id: "lmstudio", name: "LM Studio", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:1234/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: Some("https://lmstudio.ai") },
+    VendorPreset { id: "llamacpp", name: "llama.cpp", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:8080/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
+    VendorPreset { id: "vllm", name: "vLLM", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:8000/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
+    VendorPreset { id: "xinference", name: "Xinference", short: None, kind: VendorKind::Local, protocol: "chat", chat: Some("http://localhost:9997/v1"), responses: None, anthropic: None, gemini: None, note: None, pair: None, keys_url: None, website: None },
 ];
 
 /// One-line management display for stored capability metadata, or `None`
@@ -483,6 +490,23 @@ mod tests {
                 assert!(
                     keys_url.starts_with("https://"),
                     "vendor {} has a non-https keys_url",
+                    v.id
+                );
+            }
+            if let Some(website) = v.website {
+                assert!(
+                    website.starts_with("https://"),
+                    "vendor {} has a non-https website",
+                    v.id
+                );
+            }
+            if let Some(note) = v.note {
+                assert!(
+                    note.contains('.')
+                        && note
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-'),
+                    "vendor {} note should be an i18n key like prov.azureNote",
                     v.id
                 );
             }

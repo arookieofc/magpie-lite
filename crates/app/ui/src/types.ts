@@ -269,6 +269,7 @@ export interface VendorPreset {
   pair?: string;
   icon?: string | null;
   keys_url?: string;
+  website?: string;
 }
 
 export interface TraceResponse {

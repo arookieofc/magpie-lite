@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Import, Plus, Search } from "lucide-react";
 import { Card, Empty, Field } from "./ui";
 import VendorIcon, { hostOf } from "./vendorIcon";
-import { useT } from "../i18n";
+import { useT, type TFunc } from "../i18n";
 import type { ProviderConfig, VendorPreset } from "../types";
 
 export interface PastedEndpoint {
@@ -93,7 +93,7 @@ export default function AddProvider({
   const q = query.trim().toLowerCase();
   const groupText = (g: TileGroup) =>
     g.entries
-      .flatMap((pr) => [pr.name, pr.short, pr.id, pr.kind, pr.note, ...presetUrls(pr).map(hostOf)])
+      .flatMap((pr) => [pr.name, pr.short, pr.id, pr.kind, pr.note, pr.note ? t(pr.note as Parameters<TFunc>[0]) : null, ...presetUrls(pr).map(hostOf)])
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
@@ -124,7 +124,7 @@ export default function AddProvider({
       const where = g.entries.length > 1 ? `${pr.id.endsWith("-cn") ? t("add.china") : t("add.global")} ` : "";
       // A preset's own note says more than its host (Azure's
       // YOUR-RESOURCE pattern), like upstream's tile tooltip.
-      const host = pr.note ?? presetUrls(pr).map(hostOf).join(", ");
+      const host = pr.note ? t(pr.note as Parameters<TFunc>[0]) : presetUrls(pr).map(hostOf).join(", ");
       return `${where}${host}${isAdded(pr) ? ` · ${t("add.addedNote")}` : ""}`;
     });
     const head = g.entries[0].short ? `${g.entries[0].short} · ${g.entries[0].name}` : g.entries[0].name;

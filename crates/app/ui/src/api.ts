@@ -34,3 +34,16 @@ export const get = <T = unknown>(path: string) => request<T>(path, "GET");
 export const post = <T = unknown>(path: string, body?: unknown) => request<T>(path, "POST", body);
 export const put = <T = unknown>(path: string, body?: unknown) => request<T>(path, "PUT", body);
 export const del = <T = unknown>(path: string) => request<T>(path, "DELETE");
+
+// Key-portal links leave the console: inside the shell they go through
+// the `open_url` command to the system browser, so the app webview
+// itself never navigates away. In dev browsers there is no shell, so a
+// plain new tab does the same job.
+export async function openExternal(url: string): Promise<void> {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (invoke) {
+    await invoke("open_url", { url });
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}

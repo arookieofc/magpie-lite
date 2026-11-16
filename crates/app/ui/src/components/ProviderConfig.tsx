@@ -737,9 +737,77 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   const editingProvider = typeof editing === "string"
     ? (providers.find((p) => p.id === editing) ?? null)
     : null;
+  // The preset behind the row being edited, like upstream's head
+  // showing `pr.note` for a saved provider too, not just a new draft.
+  const editPreset = (() => {
+    if (typeof editing !== "string" || !editingProvider) return null;
+    const list = presets ?? [];
+    const byId = list.find(
+      (pr) => editingProvider.id === pr.id || editingProvider.id.startsWith(`${pr.id}-`),
+    );
+    if (byId) return byId;
+    const host = editingProvider.base_url ? hostOf(editingProvider.base_url) : "";
+    if (!host) return null;
+    return list.find((pr) => {
+      const u = pr.chat || pr.responses || pr.anthropic || pr.gemini || "";
+      return !!u && hostOf(u) === host;
+    }) ?? null;
+  })();
   // Live count for the key pool box, matching the custom dialog's hint:
   // keys come one a line or separated by commas.
   const poolKeyCount = splitKeys(draft.keys).length;
+  // The key-portal link follows the plan picked: a region's page goes
+  // with its endpoints, and an existing row falls back to its preset's
+  // own page, like upstream's `keysUrl` side link. Vendors without a
+  // confident page stay without a link.
+  const keysUrl = editing === null
+    ? (preset?.keys_url ?? null)
+    : (() => {
+        if (!editingProvider) return null;
+        const list = presets ?? [];
+        const byId = list.find(
+          (pr) => editingProvider.id === pr.id || editingProvider.id.startsWith(`${pr.id}-`),
+        );
+        if (byId?.keys_url) return byId.keys_url;
+        const host = editingProvider.base_url ? hostOf(editingProvider.base_url) : "";
+        if (host) {
+          const byHost = list.find((pr) => {
+            const u = pr.chat || pr.responses || pr.anthropic || pr.gemini || "";
+            return !!u && !!pr.keys_url && hostOf(u) === host;
+          });
+          if (byHost?.keys_url) return byHost.keys_url;
+        }
+        return null;
+      })();
+  // The vendor's home page follows the picked plan, like upstream's
+  // header site link: a region's site goes with its endpoints.
+  const siteUrl = editing === null
+    ? (preset?.website ?? null)
+    : (() => {
+        if (!editingProvider) return null;
+        const list = presets ?? [];
+        const byId = list.find(
+          (pr) => editingProvider.id === pr.id || editingProvider.id.startsWith(`${pr.id}-`),
+        );
+        if (byId?.website) return byId.website;
+        const host = editingProvider.base_url ? hostOf(editingProvider.base_url) : "";
+        if (host) {
+          const byHost = list.find((pr) => {
+            const u = pr.chat || pr.responses || pr.anthropic || pr.gemini || "";
+            return !!u && !!pr.website && hostOf(u) === host;
+          });
+          if (byHost?.website) return byHost.website;
+        }
+        // No confident page: link the provider's own origin, like
+        // upstream's `hostSite` fallback. Only a host with a dot or a
+        // port links, so a bare name stays without a link.
+        const origin = originOfUrl(editingProvider.base_url);
+        if (origin) {
+          const hostPort = origin.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0] || "";
+          if (/[.:]/.test(hostPort)) return origin;
+        }
+        return null;
+      })();
   // A local server's address moves each URL, keeping its path
   // (upstream provider.AtAddress). Shown first, only for local-kind
   // presets: a new draft from one, or a saved provider born from one.
@@ -815,12 +883,38 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           <>
             <VendorIcon name={preset.name} icon={preset.icon ?? null} size="sm" />
             <h3>{preset.name}</h3>
-            {preset.note ? <span className="note">{preset.note}</span> : null}
+            {preset.note ? <span className="note">{t(preset.note as Parameters<TFunc>[0])}</span> : null}
           </>
         ) : (
-          <h3>{editing === null ? t("prov.new") : t("prov.editTitle", { name: draft.name || draft.id })}</h3>
+          <>
+            {editing !== null && editingProvider ? (
+              <VendorIcon
+                name={editingProvider.name || editingProvider.id}
+                icon={editingProvider.icon || presetIconForHost(presets, hostOf(editingProvider.base_url)) || null}
+                size="sm"
+              />
+            ) : null}
+            <h3>{editing === null ? t("prov.new") : t("prov.editTitle", { name: draft.name || draft.id })}</h3>
+            {typeof editing === "string" && editPreset?.note ? (
+              <span className="note">{t(editPreset.note as Parameters<TFunc>[0])}</span>
+            ) : null}
+          </>
         )}
         {editing !== null ? <span className="sub"><code>{draft.id}</code></span> : null}
+        {siteUrl ? (
+          <>
+            <span className="spacer" />
+            <button
+              type="button"
+              className="link site"
+              onClick={() => {
+                api.openExternal(siteUrl).catch((err) => setMessage((err as Error).message));
+              }}
+            >
+              {siteUrl.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0].toLowerCase()} ↗
+            </button>
+          </>
+        ) : null}
       </div>
       <div className="editor-body">
         {message ? (
@@ -978,7 +1072,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           {showKeys ? (
             <Field label={t("prov.newKeys")} htmlFor="provider-keys" help={t("prov.newKeysHelp")}>
               <textarea id="provider-keys" className={`input mono${showPoolKeys ? "" : " secret"}`} rows={3} autoComplete="off" spellCheck={false}
-                value={draft.keys} onChange={(e) => set({ keys: e.target.value })} onPaste={onPasteCurl} />
+                value={draft.keys} onChange={(e) => set({ keys: e.target.value })} onPaste={onPasteCurl}
+                placeholder={t("prov.keyPh")} />
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <button type="button" className="link" onClick={() => setShowPoolKeys((v) => !v)}>
                   {showPoolKeys ? t("prov.hide") : t("prov.show")}
@@ -987,6 +1082,17 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                   <span className="help" role="status" title={t("prov.keysCountTitle", { n: poolKeyCount })}>
                     {t("prov.nKeys", { n: poolKeyCount })}
                   </span>
+                ) : null}
+                {keysUrl ? (
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      api.openExternal(keysUrl).catch((err) => setMessage((err as Error).message));
+                    }}
+                  >
+                    {t("prov.getKey")}
+                  </button>
                 ) : null}
               </div>
             </Field>

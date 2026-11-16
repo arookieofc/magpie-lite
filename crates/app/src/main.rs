@@ -45,6 +45,40 @@ async fn gateway_request(
     Ok(serde_json::json!({ "status": status, "body": body }))
 }
 
+/// Open an https URL in the system browser, so the console's key links
+/// never navigate the app webview itself. Only plain https pages open;
+/// anything else is rejected before reaching the OS launcher.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let url = url.trim().to_owned();
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "only https links can open")?;
+    if parsed.scheme() != "https" || !parsed.has_host() {
+        return Err("only https links can open".to_owned());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     // The gateway gets its own runtime: Tauri's main thread stays free
     // for the window, and axum's serving never blocks the UI.
@@ -99,7 +133,7 @@ fn main() -> anyhow::Result<()> {
             client: reqwest::Client::new(),
             port,
         }))
-        .invoke_handler(tauri::generate_handler![gateway_request])
+        .invoke_handler(tauri::generate_handler![gateway_request, open_url])
         .setup(move |app| {
             WebviewWindowBuilder::new(
                 app,
