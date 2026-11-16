@@ -50,3 +50,15 @@ export function statusTone(status?: string): string {
   if (!status) return "";
   return status === "ok" ? "good" : "bad";
 }
+
+// The keys in text pasted at once, mirroring upstream's splitKeys: one a
+// line, or separated by commas, semicolons or spaces; quotes stripped and
+// dupes dropped so key slots (and their weights/limits) stay aligned.
+export function splitKeys(text: string): string[] {
+  const out: string[] = [];
+  for (let f of String(text).split(/[,;，；\s\u3000]+/)) {
+    f = f.replace(/^["'`]+|["'`]+$/g, "");
+    if (f && !out.includes(f)) out.push(f);
+  }
+  return out;
+}

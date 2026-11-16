@@ -4,6 +4,7 @@ import { Field, Notice } from "./ui";
 import VendorIcon from "./vendorIcon";
 import { useT } from "../i18n";
 import type { VendorPreset } from "../types";
+import { splitKeys } from "../util";
 
 export interface CustomDraft {
   name: string;
@@ -71,6 +72,9 @@ export default function CustomProvider({
   const [iconUrlMode, setIconUrlMode] = useState(false);
   const [iconUrl, setIconUrl] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Many keys pasted at once: the count, like upstream's key-count hint.
+  const keyCount = splitKeys(draft.keys).length;
 
   const icons = useMemo(() => {
     const names = new Set<string>();
@@ -176,6 +180,13 @@ export default function CustomProvider({
             type={showKey ? "text" : "password"}
             value={draft.keys}
             onChange={(e) => set({ keys: e.target.value })}
+            onPaste={(e) => {
+              const keys = splitKeys(e.clipboardData?.getData("text") ?? "");
+              if (keys.length < 2) return;
+              e.preventDefault();
+              // An input keeps no line breaks: keep the keys comma separated.
+              set({ keys: keys.join(", ") });
+            }}
             placeholder={t("prov.keyPh")}
             autoComplete="off"
             spellCheck={false}
@@ -183,6 +194,11 @@ export default function CustomProvider({
           <button type="button" className="link" onClick={() => setShowKey((v) => !v)}>
             {showKey ? t("prov.hide") : t("prov.show")}
           </button>
+          {keyCount > 1 ? (
+            <span className="help" role="status" title={t("prov.keysCountTitle", { n: keyCount })}>
+              {t("prov.nKeys", { n: keyCount })}
+            </span>
+          ) : null}
         </div>
 
         <span className="cst-label">{t("prov.icon")}</span>

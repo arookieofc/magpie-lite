@@ -17,6 +17,7 @@ import VendorIcon, { hostOf, presetIconForHost } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import AddProvider, { type PastedEndpoint } from "./AddProvider";
 import CustomProvider from "./CustomProvider";
+import { splitKeys } from "../util";
 
 function policyLabel(v: string, t: TFunc): string {
   switch (v) {
@@ -439,7 +440,9 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       body.weights = weights.values;
     }
     if (draft.keyMode === "replace") {
-      const keys = lines(draft.keys);
+      // Keys pasted at once come one a line or separated by commas,
+      // semicolons or spaces, like upstream reads them.
+      const keys = splitKeys(draft.keys);
       if (!keys.length) {
         setMessage(t("prov.needKeys"));
         return null;
