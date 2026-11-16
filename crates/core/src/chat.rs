@@ -571,6 +571,11 @@ pub struct ChatStreamDecoder {
     /// Each choice's open Chat tool call, so fragments sent without OpenAI's
     /// required index still address the call the vendor means.
     open_calls: HashMap<usize, OpenCall>,
+    /// Calls held while the open call's arguments were not yet whole JSON
+    /// when they started: fragments that arrive by turns (index 0, 1, 0, 1)
+    /// accumulate per upstream index and are emitted whole, in start order,
+    /// at finish (the reference's `heldCall`, 865df247).
+    held: Vec<HeldCall>,
 }
 
 /// One choice's open Chat tool-call stream.
@@ -578,8 +583,59 @@ pub struct ChatStreamDecoder {
 struct OpenCall {
     open: bool,
     id: String,
+    /// The upstream index this call goes by: a relay may pass Responses'
+    /// output_index through, so the first call can arrive as 1 (873b4987).
+    upstream: usize,
+    /// The client-facing index: calls count 0, 1, 2 in the order they start.
     index: usize,
     next: usize,
+    /// Whether the open call's argument bytes close their JSON: a new call
+    /// that starts while they do not is held for the reply's end (865df247).
+    args_whole: bool,
+}
+
+/// A tool call held because another call's arguments were still open when
+/// it started (the reference's `heldCall`, 865df247).
+#[derive(Debug)]
+struct HeldCall {
+    /// The upstream index the call came by, `usize::MAX` for an unindexed
+    /// fragment.
+    upstream: usize,
+    /// The client-facing index assigned in start order.
+    index: usize,
+    id: String,
+    name: String,
+    args: String,
+}
+
+/// Whether a fragment's id names a different call than the one open at its
+/// index: a relay repeating the id on every fragment continues the call, a
+/// genuinely different id starts the next (the reference's `newID`).
+fn new_id(id: &str, open_id: &str) -> bool {
+    !id.is_empty() && id != open_id
+}
+
+/// Whether the argument bytes accumulated so far close their JSON, tracked
+/// by bracket depth outside string literals (the reference's `jsonWhole`,
+/// 865df247). A depth-0 read outside a string counts as whole.
+fn json_whole(args: &str) -> bool {
+    let mut depth = 0i64;
+    let mut in_string = false;
+    let mut escaped = false;
+    for byte in args.bytes() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match byte {
+            b'\\' if in_string => escaped = true,
+            b'"' => in_string = !in_string,
+            b'{' | b'[' if !in_string => depth += 1,
+            b'}' | b']' if !in_string => depth -= 1,
+            _ => {}
+        }
+    }
+    depth <= 0 && !in_string
 }
 
 impl ChatStreamDecoder {
@@ -655,30 +711,17 @@ impl ChatStreamDecoder {
             }
         }
         if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array) {
-            let open = self.open_calls.entry(choice_index).or_default();
             for (position, c) in calls.iter().enumerate() {
-                let index = Self::call_index(open, c, position);
                 let id = c.get("id").and_then(Value::as_str).unwrap_or_default();
                 let name = c
                     .pointer("/function/name")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
-                if !id.is_empty() || !name.is_empty() {
-                    out.push(StreamEvent::ToolCallStart {
-                        index,
-                        id: id.to_owned(),
-                        name: name.to_owned(),
-                        namespace: None,
-                    });
-                }
-                if let Some(a) = c.pointer("/function/arguments").and_then(Value::as_str)
-                    && !a.is_empty()
-                {
-                    out.push(StreamEvent::ToolCallDelta {
-                        index,
-                        args: a.to_owned(),
-                    });
-                }
+                let args = c
+                    .pointer("/function/arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                self.tool_call(choice_index, c, position, id, name, args, &mut out);
             }
         }
         if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str)
@@ -694,38 +737,135 @@ impl ChatStreamDecoder {
             } else {
                 StopReason::from_chat(reason)
             };
+            out.extend(self.give_held());
             out.push(StreamEvent::Stop(stop));
         }
         out
     }
 
-    fn call_index(open: &mut OpenCall, call: &Value, position: usize) -> usize {
-        let id = call.get("id").and_then(Value::as_str).unwrap_or_default();
-        if call.get("index").is_some_and(|v| !v.is_null())
-            && let Some(index) = call.get("index").and_then(Value::as_u64)
-        {
-            let index = index.min(usize::MAX as u64) as usize;
-            open.open = true;
-            open.id = if id.is_empty() {
-                open.id.clone()
-            } else {
-                id.to_owned()
-            };
-            open.index = index;
-            open.next = open.next.max(index.saturating_add(1));
-            return index;
+    /// Emit the calls held while another's arguments were open, each whole,
+    /// in client index order, then close the open call (the reference's
+    /// `giveHeld`, 865df247). Called on finish_reason; a stream that ends
+    /// without one flushes through `give_held` too.
+    pub fn give_held(&mut self) -> Vec<StreamEvent> {
+        if self.held.is_empty() {
+            return Vec::new();
         }
-        if !open.open || position > 0 || (!id.is_empty() && id != open.id) {
-            open.open = true;
+        let mut held = std::mem::take(&mut self.held);
+        held.sort_by_key(|call| call.index);
+        for open in self.open_calls.values_mut() {
+            open.open = false;
+            open.id.clear();
+            open.args_whole = false;
+        }
+        let mut out = Vec::new();
+        for call in held {
+            out.push(StreamEvent::ToolCallStart {
+                index: call.index,
+                id: call.id,
+                name: call.name,
+                namespace: None,
+            });
+            if !call.args.is_empty() {
+                out.push(StreamEvent::ToolCallDelta {
+                    index: call.index,
+                    args: call.args,
+                });
+            }
+            out.push(StreamEvent::ToolCallEnd { index: call.index });
+        }
+        out
+    }
+
+    /// Read one fragment of a tool call. A fragment repeating the open
+    /// call's id, or carrying none, continues it; a different index or a new
+    /// id starts the next call. When the open call's arguments are not yet
+    /// whole JSON the starter is held by its upstream index and emitted
+    /// whole at finish, so interleaved fragments stay with their own call
+    /// (865df247).
+    fn tool_call(
+        &mut self,
+        choice: usize,
+        c: &Value,
+        position: usize,
+        id: &str,
+        name: &str,
+        args: &str,
+        out: &mut Vec<StreamEvent>,
+    ) {
+        let upstream = c
+            .get("index")
+            .and_then(Value::as_u64)
+            .map(|i| i.min(usize::MAX as u64) as usize);
+        // A held call of the same upstream index takes its next fragment:
+        // same id or none continues it; a new id falls through and starts a
+        // fresh call.
+        if let Some(u) = upstream {
+            for call in self.held.iter_mut() {
+                if call.upstream == u && !new_id(id, &call.id) {
+                    call.args.push_str(args);
+                    return;
+                }
+            }
+        }
+        let open = self.open_calls.entry(choice).or_default();
+        let continues = match upstream {
+            Some(u) => open.open && u == open.upstream && !new_id(id, &open.id),
+            None => open.open && position == 0 && !new_id(id, &open.id),
+        };
+        if continues {
             if !id.is_empty() {
                 open.id = id.to_owned();
             }
-            open.index = open.next;
+            Self::tool_args(open, args, out);
+            return;
+        }
+        if open.open && (!open.args_whole || !self.held.is_empty()) {
+            let index = open.next;
             open.next = open.next.saturating_add(1);
-        } else if open.id.is_empty() && !id.is_empty() {
+            self.held.push(HeldCall {
+                upstream: upstream.unwrap_or(usize::MAX),
+                index,
+                id: id.to_owned(),
+                name: name.to_owned(),
+                args: args.to_owned(),
+            });
+            return;
+        }
+        // Number calls 0, 1, 2 in the order they start, whatever index the
+        // upstream numbered them by: a Responses output_index puts the
+        // reply's text at 0 and its first call at 1 (873b4987).
+        let index = open.next;
+        open.next = open.next.saturating_add(1);
+        open.open = true;
+        if !id.is_empty() {
             open.id = id.to_owned();
         }
-        open.index
+        open.upstream = upstream.unwrap_or(usize::MAX);
+        open.index = index;
+        open.args_whole = args.is_empty();
+        if !id.is_empty() || !name.is_empty() {
+            out.push(StreamEvent::ToolCallStart {
+                index,
+                id: id.to_owned(),
+                name: name.to_owned(),
+                namespace: None,
+            });
+        }
+        Self::tool_args(open, args, out);
+    }
+
+    /// A piece of the open call's arguments; marks them whole once the JSON
+    /// closes (the reference's `toolArgs`, 865df247).
+    fn tool_args(open: &mut OpenCall, args: &str, out: &mut Vec<StreamEvent>) {
+        if args.is_empty() {
+            return;
+        }
+        open.args_whole = json_whole(args);
+        out.push(StreamEvent::ToolCallDelta {
+            index: open.index,
+            args: args.to_owned(),
+        });
     }
 }
 

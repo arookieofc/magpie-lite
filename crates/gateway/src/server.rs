@@ -4888,6 +4888,15 @@ fn upstream_events(
         let mut parser = SseParser::new();
         let mut decoders = UpstreamDecoders::new();
         let mut chat_stopped = false;
+        // Anything the reply said: answer text or calls, and reasoning too —
+        // an upstream whose end says nothing at all gave an empty reply
+        // (the reference's `spoke`/`said`, c0cf352a).
+        let mut reply_said = false;
+        // The upstream's own last word arrived — Chat's [DONE], Anthropic's
+        // message_stop, a Responses completed/incomplete: the reply is
+        // whole and the read ends here, not at the hangup a relay may hold
+        // open past it (the reference's `saidOver`, 48875e58/2e92d71a).
+        let mut said_over = false;
         let mut loop_guard = loop_guard_enabled.then(LoopGuard::default);
         let mut hold = Some(responses_hold);
         let mut opening_held = false;
@@ -4936,6 +4945,7 @@ fn upstream_events(
                         return;
                     }
                 };
+                let mut saw_done = false;
                 for event in decode_upstream_data(protocol, &data, &mut decoders) {
                     clock.observe(&event.event);
                     match &event.event {
@@ -4945,6 +4955,8 @@ fn upstream_events(
                         _ => hold = None,
                     }
                     chat_stopped |= protocol == Protocol::Chat && matches!(event.event, StreamEvent::Stop(_));
+                    reply_said |= event.event.is_content();
+                    saw_done |= matches!(event.event, StreamEvent::Done);
                     let trip = loop_guard.as_mut().and_then(|guard| guard.observe(&event.event));
                     yield event.into();
                     if let Some(trip) = trip {
@@ -4967,57 +4979,94 @@ fn upstream_events(
                         return;
                     }
                 }
+                if saw_done {
+                    // The upstream said its reply over: held tool-call
+                    // fragments still owed to the client are given whole
+                    // (865df247), then the read ends — a relay holding the
+                    // connection must not hold the reply's end (#5936).
+                    for event in decoders.chat.give_held() {
+                        reply_said |= event.is_content();
+                        yield event.into();
+                    }
+                    said_over = true;
+                    break;
+                }
+            }
+            if said_over {
+                break;
             }
         }
-        // Tolerate a complete final data frame lacking its blank separator.
-        match parser.flush() {
-            Ok(Some(data)) => {
-                for event in decode_upstream_data(protocol, &data, &mut decoders) {
-                    clock.observe(&event.event);
-                    chat_stopped |= protocol == Protocol::Chat && matches!(event.event, StreamEvent::Stop(_));
-                    let trip = loop_guard.as_mut().and_then(|guard| guard.observe(&event.event));
-                    yield event.into();
-                    if let Some(trip) = trip {
-                        yield UpstreamEvent {
-                            event: StreamEvent::Error {
-                                message: trip.message().into(),
-                                code: None,
-                            },
-                            failure: Some(StreamFailure {
-                                kind: FailureKind::Upstream,
-                                status: StatusCode::BAD_GATEWAY,
-                                body: Value::Null,
-                            }),
-                            usage_observed: false,
-                            usage_hidden: false,
-                            answer_observed: false,
-                            loop_reasoning: trip.is_reasoning(),
-                            no_continuation: false,
-                        }.into();
-                        return;
+        if !said_over {
+            // Tolerate a complete final data frame lacking its blank separator.
+            match parser.flush() {
+                Ok(Some(data)) => {
+                    let mut saw_done = false;
+                    for event in decode_upstream_data(protocol, &data, &mut decoders) {
+                        clock.observe(&event.event);
+                        chat_stopped |= protocol == Protocol::Chat && matches!(event.event, StreamEvent::Stop(_));
+                        reply_said |= event.event.is_content();
+                        saw_done |= matches!(event.event, StreamEvent::Done);
+                        let trip = loop_guard.as_mut().and_then(|guard| guard.observe(&event.event));
+                        yield event.into();
+                        if let Some(trip) = trip {
+                            yield UpstreamEvent {
+                                event: StreamEvent::Error {
+                                    message: trip.message().into(),
+                                    code: None,
+                                },
+                                failure: Some(StreamFailure {
+                                    kind: FailureKind::Upstream,
+                                    status: StatusCode::BAD_GATEWAY,
+                                    body: Value::Null,
+                                }),
+                                usage_observed: false,
+                                usage_hidden: false,
+                                answer_observed: false,
+                                loop_reasoning: trip.is_reasoning(),
+                                no_continuation: false,
+                            }.into();
+                            return;
+                        }
+                    }
+                    if saw_done {
+                        for event in decoders.chat.give_held() {
+                            reply_said |= event.is_content();
+                            yield event.into();
+                        }
+                        said_over = true;
                     }
                 }
-            }
-            Ok(None) => {}
-            Err(error) => {
-                yield StreamEvent::Error {
-                    message: error.to_string(),
-                    code: None,
+                Ok(None) => {}
+                Err(error) => {
+                    yield StreamEvent::Error {
+                        message: error.to_string(),
+                        code: None,
+                    }
+                    .into();
+                    return;
                 }
-                .into();
-                return;
             }
         }
         // Some Chat-compatible endpoints close cleanly after finish_reason,
         // omitting [DONE]. Do not end at Stop: a later usage frame is valid.
+        let gemini_answered = protocol == Protocol::Gemini && decoders.gemini_reply.has_answer();
         if protocol == Protocol::Gemini && decoders.gemini_reply.is_empty() {
             yield empty_reply_event().into();
-        } else if chat_stopped
-            || (protocol == Protocol::Gemini && decoders.gemini_reply.has_answer())
-        {
+        } else if (chat_stopped || said_over) && !reply_said && !gemini_answered {
+            // The reply's own end — a finish_reason, message_stop or
+            // completed — came with nothing said before it: no text, no
+            // reasoning, no call. It is the empty reply's to answer, the
+            // group's next member's to try (c0cf352a).
+            yield empty_reply_event().into();
+        } else if chat_stopped || said_over || gemini_answered {
             // Unlike Anthropic/Responses, Gemini may end an answered
             // reply by clean EOF without a separate finish marker.
             yield StreamEvent::Done.into();
+        } else if protocol == Protocol::Chat && !reply_said {
+            // A Chat reply that said nothing and never gave a finish_reason
+            // — Copilot's gemini-4-carbon answering 200 with only a usage
+            // frame — is an empty reply too, asked again (28b8244d).
+            yield empty_reply_event().into();
         } else {
             yield StreamEvent::Error {
                 message: "upstream stream ended before a completion marker".into(),
