@@ -253,6 +253,21 @@ export interface Config {
   vision?: string | null;
 }
 
+// One tile of the Add sheet, served by GET /config/presets.
+export interface VendorPreset {
+  id: string;
+  name: string;
+  short?: string;
+  kind: "partner" | "vendor" | "relay" | "local";
+  protocol: string;
+  chat?: string;
+  responses?: string;
+  anthropic?: string;
+  gemini?: string;
+  note?: string;
+  pair?: string;
+}
+
 export interface TraceResponse {
   seq: number;
   routes: RequestRecord[];

@@ -100,6 +100,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/trace", get(trace))
         .route("/config", get(config))
         .route("/config/providers", post(crate::providers::create))
+        .route("/config/presets", get(crate::providers::presets))
         .route(
             "/config/providers/{id}",
             put(crate::providers::update).delete(crate::providers::delete),

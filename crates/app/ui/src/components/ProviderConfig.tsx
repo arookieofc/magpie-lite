@@ -1,32 +1,20 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Check,
-  CircleHelp,
   FlaskConical,
   Info,
-  KeyRound,
   Pencil,
   Plus,
   ScanSearch,
+  Search,
   Server,
   Trash2,
-  X,
+  ChevronRight,
 } from "lucide-react";
 import * as api from "../api";
-import type { Config, ProviderConfig as Provider } from "../types";
-import { fmt, formatDuration } from "../util";
+import type { Config, ProviderConfig as Provider, VendorPreset } from "../types";
 import { Avatar, Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Segmented, Switch } from "./ui";
 import { useT, type TFunc } from "../i18n";
-
-function protoLabel(v: string, t: TFunc): string {
-  switch (v) {
-    case "chat": return t("prov.protoChat");
-    case "responses": return t("prov.protoResponses");
-    case "anthropic": return t("prov.protoAnthropic");
-    case "gemini": return t("prov.protoGemini");
-    default: return v;
-  }
-}
+import AddProvider, { type PastedEndpoint } from "./AddProvider";
 
 function policyLabel(v: string, t: TFunc): string {
   switch (v) {
@@ -62,6 +50,57 @@ function routingSummary(p: Provider, t: TFunc): string {
   if (policy !== "weight") return `${policyLabel(policy, t)}${aff}${limits}${pin}`;
   const weights = (p.weights ?? []).length ? t("prov.sumWeight", { v: p.weights!.join(", ") }) : t("prov.optWeight");
   return `${weights}${aff}${limits}${pin}`;
+}
+
+// Row-list helpers, mirroring upstream's providers view: one row per
+// provider (logo, name + badges, host and model count, key pill, chevron),
+// with the full editor expanding under the selected row.
+function hostOf(url: string): string {
+  const bare = url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0];
+  return bare || url;
+}
+
+function modelsLabel(p: Provider, t: TFunc): string {
+  const n = (p.models ?? []).length;
+  if (n === 1) return t("prov.oneModel");
+  if (n > 1) return t("prov.nModels", { n });
+  return t("prov.noModels");
+}
+
+function keyPill(p: Provider, t: TFunc): { text: string; tone: string; title: string } {
+  if ((p.credential_count ?? 0) === 0) {
+    return { text: t("prov.noAuth"), tone: "none", title: t("prov.noAuthTitle") };
+  }
+  const n = p.key_count || p.credential_count || 0;
+  return { text: t("prov.nKeys", { n }), tone: "on", title: routingSummary(p, t) };
+}
+
+const sq = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
+
+function providerText(p: Provider): string {
+  return [
+    p.id,
+    p.name,
+    p.protocol,
+    p.base_url,
+    hostOf(p.base_url),
+    ...(p.models ?? []),
+    ...(p.free_models ?? []),
+    ...(p.fallback ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+// Models that answer the query words the row's own text doesn't, shown
+// under the row like upstream's "Serves …" hits.
+function modelHits(p: Provider, q: string): string[] {
+  if (!q) return [];
+  const text = providerText(p);
+  const rest = q.split(/\s+/).filter(Boolean).filter((w) => !text.includes(w));
+  if (!rest.length) return [];
+  return (p.models ?? []).filter((m) => rest.every((w) => sq(m).includes(sq(w))));
 }
 
 interface Draft {
@@ -186,18 +225,80 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   const [discovered, setDiscovered] = useState<string[]>([]);
   const providers = config?.providers ?? [];
 
+  // The Add sheet: vendor tiles prefill a new draft, like upstream's
+  // `adding` page state. It opens on first use, when no provider exists.
+  const [adding, setAdding] = useState(false);
+  const [presets, setPresets] = useState<VendorPreset[] | null>(null);
+  const booted = useRef(false);
+  useEffect(() => {
+    if (!booted.current && config) {
+      booted.current = true;
+      if (config.providers.length === 0) setAdding(true);
+    }
+  }, [config]);
+  useEffect(() => {
+    let live = true;
+    api.get<VendorPreset[]>("/config/presets").then(
+      (list) => { if (live) setPresets(list); },
+      () => { if (live) setPresets([]); },
+    );
+    return () => { live = false; };
+  }, []);
+
+  // Upstream-style find: rows saying every word, by id, name, host and
+  // model; a word the row doesn't say matches the models it serves.
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!q) return providers;
+    const words = q.split(/\s+/).filter(Boolean);
+    return providers.filter((p) => {
+      const text = providerText(p);
+      const squashed = sq(text);
+      if (words.every((w) => text.includes(w) || squashed.includes(sq(w)))) return true;
+      return modelHits(p, q).length > 0;
+    });
+  }, [providers, q]);
+
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  function openNew() {
+  function openCustom(prefill?: PastedEndpoint) {
     if (busy) return;
+    setAdding(false);
     setEditing(null);
-    setDraft(blankDraft(providers.length === 0));
+    const draft = blankDraft(providers.length === 0);
+    if (prefill?.baseUrl) draft.baseUrl = prefill.baseUrl;
+    if (prefill?.keys) {
+      draft.keyMode = "replace";
+      draft.keys = prefill.keys;
+    }
+    setDraft(draft);
+    setMessage("");
+    setDiscovered([]);
+  }
+
+  function openPreset(pr: VendorPreset) {
+    if (busy) return;
+    const used = new Set(providers.map((p) => p.id));
+    let id = pr.id, n = 2;
+    while (used.has(id)) id = `${pr.id}-${n++}`;
+    setAdding(false);
+    setEditing(null);
+    setDraft({
+      ...blankDraft(providers.length === 0),
+      id,
+      name: pr.name,
+      protocol: pr.protocol,
+      baseUrl: pr.chat || pr.responses || pr.anthropic || pr.gemini || "",
+      keyMode: "replace",
+    });
     setMessage("");
     setDiscovered([]);
   }
 
   function openEdit(p: Provider) {
     if (busy) return;
+    setAdding(false);
     setEditing(p.id);
     setDraft(draftFrom(p, config?.default_provider === p.id));
     setMessage("");
@@ -590,7 +691,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         title={t("page.providersTitle")}
         subtitle={t("page.providersSub")}
       >
-        <button type="button" className="btn primary" onClick={openNew} disabled={busy}>
+        <button type="button" className="btn primary" onClick={() => setAdding(true)} disabled={busy}>
           <Plus size={14} aria-hidden="true" />
           {t("prov.new")}
         </button>
@@ -602,9 +703,34 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         </Notice>
       ) : null}
 
-      {editing === null ? <Card flush>{editorForm}</Card> : null}
+      {adding ? (
+        <AddProvider
+          presets={presets}
+          providers={providers}
+          canClose={providers.length > 0}
+          onPickPreset={openPreset}
+          onPickCustom={openCustom}
+          onOpen={openEdit}
+          onClose={() => setAdding(false)}
+        />
+      ) : null}
 
-      {providers.length === 0 ? (
+      {editing === null && !adding ? <Card flush>{editorForm}</Card> : null}
+
+      {!adding && config === null ? (
+        <div className="pv-list" aria-busy="true" aria-label={t("side.loading")}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="pv-row pv-sk-row" aria-hidden="true">
+              <span className="avatar skeleton pv-sk-icon" />
+              <span className="pv-who pv-sk-who">
+                <span className="skeleton pv-sk-name" />
+                <span className="skeleton pv-sk-sub" />
+              </span>
+              <span className="skeleton pv-sk-key" />
+            </div>
+          ))}
+        </div>
+      ) : !adding && providers.length === 0 ? (
         editing === false ? (
           <Card>
             <Empty icon={<Server size={18} />} title={t("prov.emptyTitle")}>
@@ -612,100 +738,79 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
             </Empty>
           </Card>
         ) : null
-      ) : (
-        <div className="provider-grid">
-          {providers.map((p) => {
-            const isDefault = config?.default_provider === p.id;
-            const caps = p.capabilities;
-            const shown = (p.models ?? []).slice(0, 8);
-            const more = (p.models ?? []).length - shown.length;
-            const free = new Set(p.free_models ?? []);
-            return (
-              <article key={p.id} className={`provider-card${editing === p.id ? " editing" : ""}`}>
-                {editing === p.id ? (
-                  <>
-                    <header className="provider-head editor-context">
-                      <Avatar name={p.name || p.id} />
-                      <div className="provider-title">
-                        <h3>
-                          {p.name || p.id}
-                          {isDefault ? <Badge tone="accent">{t("prov.default")}</Badge> : null}
-                        </h3>
-                        <p>
-                          <code>{p.id}</code>
-                          <span className="sep">·</span>
-                          {protoLabel(p.protocol, t)}
-                        </p>
-                      </div>
-                    </header>
-                    {editorForm}
-                  </>
-                ) : (
-                  <>
-                    <header className="provider-head">
-                      <Avatar name={p.name || p.id} />
-                      <div className="provider-title">
-                        <h3>
-                          {p.name || p.id}
-                          {isDefault ? <Badge tone="accent">{t("prov.default")}</Badge> : null}
-                        </h3>
-                        <p>
-                          <code>{p.id}</code>
-                          <span className="sep">·</span>
-                          {protoLabel(p.protocol, t)}
-                        </p>
-                      </div>
-                    </header>
-                    <div className="provider-mid">
-                      <p className="provider-url" title={p.base_url}>{p.base_url}</p>
-                      <ul className="chips">
-                        {shown.map((m) => (
-                          <li key={m} className="chip mono">
-                            {m}
-                            {free.has(m) ? <span className="chip-tag">{t("prov.freeTag")}</span> : null}
-                          </li>
-                        ))}
-                        {more > 0 ? <li className="chip more">{t("prov.more", { n: more })}</li> : null}
-                        {shown.length === 0 ? <li className="chip more">{t("prov.noModels")}</li> : null}
-                      </ul>
-                      <footer className="caps">
-                        {(caps?.supported_protocols ?? [p.protocol]).map((proto) => (
-                          <span key={proto} className="cap proto">{proto}</span>
-                        ))}
-                        {(["streaming", "tools", "vision"] as const).map((name) => {
-                          const v = caps?.[name];
-                          const state = v === true ? "yes" : v === false ? "no" : "unknown";
-                          const Icon = v === true ? Check : v === false ? X : CircleHelp;
-                          const stateLabel = v === true ? t("common.yes") : v === false ? t("common.no") : t("common.unknown");
-                          return (
-                            <span key={name} className={`cap ${state}`} title={`${name}: ${stateLabel}`}>
-                              <Icon size={10} aria-hidden="true" />
-                              {name}
+      ) : !adding ? (
+        <>
+          <div className="pv-toolbar">
+            <label className="pv-search">
+              <Search size={14} aria-hidden="true" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape" && query) setQuery(""); }}
+                placeholder={t("prov.search")}
+                aria-label={t("prov.search")}
+              />
+              {query ? (
+                <button type="button" className="pv-clear" onClick={() => setQuery("")} aria-label={t("common.clear")}>
+                  ×
+                </button>
+              ) : null}
+            </label>
+            <span className="pv-count" role="status">
+              {filtered.length === 1 ? t("prov.countOne") : t("prov.count", { n: filtered.length })}
+            </span>
+          </div>
+
+          {filtered.length === 0 ? (
+            <Card>
+              <Empty icon={<Search size={18} />} title={t("prov.noMatch", { q: query.trim() })}>
+                {t("prov.noMatchHint")}
+              </Empty>
+            </Card>
+          ) : (
+            <div className="pv-list">
+              {filtered.map((p) => {
+                const isDefault = config?.default_provider === p.id;
+                const open = editing === p.id;
+                const key = keyPill(p, t);
+                const hits = modelHits(p, q);
+                return (
+                  <div key={p.id}>
+                    <div className={`pv-row${open ? " selected" : ""}`}>
+                      <button
+                        type="button"
+                        className="pv-main"
+                        aria-expanded={open}
+                        aria-label={t("prov.editAria", { id: p.id })}
+                        onClick={() => (open ? close() : openEdit(p))}
+                      >
+                        <Avatar name={p.name || p.id} />
+                        <span className="pv-who">
+                          <span className="pv-name">
+                            <span className="pv-nm">{p.name || p.id}</span>
+                            {isDefault ? <Badge tone="accent">{t("prov.default")}</Badge> : null}
+                            {(p.free_models ?? []).length > 0 ? (
+                              <span className="badge">{t("prov.freeBadge", { n: (p.free_models ?? []).length })}</span>
+                            ) : null}
+                            {p.pin_upstream ? <span className="badge">{t("prov.pinned")}</span> : null}
+                          </span>
+                          <span className="pv-sub">
+                            {hostOf(p.base_url)} · {modelsLabel(p, t)}
+                          </span>
+                          {hits.length > 0 ? (
+                            <span className="pv-sub pv-hits">
+                              {t("prov.serves", { models: hits.slice(0, 6).join(", ") })}
                             </span>
-                          );
-                        })}
-                      </footer>
-                    </div>
-                    <div className="provider-side">
-                      <dl className="facts">
-                        <div>
-                          <dt><KeyRound size={11} aria-hidden="true" /> {t("prov.keys")}</dt>
-                          <dd>{p.credential_count === 0 ? t("prov.noAuth") : `${fmt(p.key_count)}`}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("prov.routing")}</dt>
-                          <dd>{routingSummary(p, t)}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("prov.cooldown")}</dt>
-                          <dd>{formatDuration(p.key_cooldown_ms)}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("prov.fallback")}</dt>
-                          <dd>{(p.fallback ?? []).length ? (p.fallback ?? []).join(" → ") : t("prov.noFallback")}</dd>
-                        </div>
-                      </dl>
-                      <div className="row-actions">
+                          ) : null}
+                        </span>
+                        <span className={`pv-key ${key.tone}`} title={key.title}>
+                          <span>{key.text}</span>
+                        </span>
+                        <span className="pv-chev" aria-hidden="true">
+                          <ChevronRight size={15} />
+                        </span>
+                      </button>
+                      <span className="pv-ops">
                         <button type="button" className="icon-btn" disabled={busy}
                           aria-label={t("prov.editAria", { id: p.id })} title={t("prov.editTitle_attr")} onClick={() => openEdit(p)}>
                           <Pencil size={14} />
@@ -714,15 +819,16 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                           aria-label={t("prov.delAria", { id: p.id })} title={t("prov.delTitle_attr")} onClick={() => remove(p)}>
                           <Trash2 size={14} />
                         </button>
-                      </div>
+                      </span>
                     </div>
-                  </>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      )}
+                    {open ? <div className="pv-editor">{editorForm}</div> : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+        ) : null}
     </>
   );
 }

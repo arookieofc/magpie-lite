@@ -173,6 +173,12 @@ fn response(result: Result<ConfigSnapshot, ConfigError>, status: StatusCode) -> 
     }
 }
 
+/// GET `/config/presets` — the vendor catalog for the console's Add
+/// sheet: makers' own APIs, one-key relays and local servers, with
+/// the default base URL and protocol each tile prefills.
+pub async fn presets() -> Json<&'static [crate::presets::VendorPreset]> {
+    Json(crate::presets::VENDORS)
+}
 pub async fn create(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
