@@ -9,6 +9,42 @@ use std::sync::Mutex;
 use magpie_router::Config;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
+/// The gateway's bound loopback port, so the page's requests go through
+/// the shell to it (a webview on the app's own scheme cannot fetch
+/// another origin directly).
+struct Gateway {
+    client: reqwest::Client,
+    port: u16,
+}
+
+/// Forward one console request to the embedded gateway and hand back
+/// status and body, so the React console stays on the app's scheme.
+#[tauri::command]
+async fn gateway_request(
+    state: tauri::State<'_, Mutex<Gateway>>,
+    method: String,
+    path: String,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let (client, port) = {
+        let gateway = state.lock().map_err(|_| "gateway state is poisoned")?;
+        (gateway.client.clone(), gateway.port)
+    };
+    let url = format!("http://127.0.0.1:{port}{path}");
+    let method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|_| format!("bad method {method}"))?;
+    let mut request = client.request(method, url);
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let status = response.status().as_u16();
+    let text = response.text().await.map_err(|e| e.to_string())?;
+    let body: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or_else(|_| serde_json::Value::String(text));
+    Ok(serde_json::json!({ "status": status, "body": body }))
+}
+
 fn main() -> anyhow::Result<()> {
     // The gateway gets its own runtime: Tauri's main thread stays free
     // for the window, and axum's serving never blocks the UI.
@@ -59,15 +95,16 @@ fn main() -> anyhow::Result<()> {
 
     let shutdown_tx = Mutex::new(Some(shutdown_tx));
     let app = tauri::Builder::default()
+        .manage(Mutex::new(Gateway {
+            client: reqwest::Client::new(),
+            port,
+        }))
+        .invoke_handler(tauri::generate_handler![gateway_request])
         .setup(move |app| {
             WebviewWindowBuilder::new(
                 app,
                 "main",
-                WebviewUrl::External(
-                    format!("http://127.0.0.1:{port}/ui")
-                        .parse()
-                        .expect("loopback url parses"),
-                ),
+                WebviewUrl::App("index.html".into()),
             )
             .title("magpie-lite")
             .inner_size(1280.0, 860.0)

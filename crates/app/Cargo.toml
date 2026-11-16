@@ -14,6 +14,8 @@ magpie-router = { path = "../router" }
 anyhow.workspace = true
 tokio.workspace = true
 tauri = { version = "2", features = [] }
+reqwest.workspace = true
+serde_json.workspace = true
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
