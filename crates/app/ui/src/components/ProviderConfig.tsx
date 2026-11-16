@@ -308,6 +308,34 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     setDiscovered([]);
   }
 
+  // A vendor's global and China endpoints are one tile in the Add sheet
+  // but two presets: the editor switches between them, keeping the typed
+  // keys, like upstream's `segs area` Region row.
+  const pairEntries: VendorPreset[] | null =
+    editing === null && preset?.pair
+      ? (presets ?? [])
+          .filter((p) => p.pair === preset.pair)
+          .sort((a, b) => (a.id.endsWith("-cn") ? 1 : 0) - (b.id.endsWith("-cn") ? 1 : 0))
+      : null;
+  const pairShown = pairEntries && pairEntries.length === 2 ? pairEntries : null;
+
+  function switchPair(next: VendorPreset) {
+    if (busy || !next || next.id === preset?.id) return;
+    const used = new Set(providers.map((p) => p.id));
+    let id = next.id, n = 2;
+    while (used.has(id)) id = `${next.id}-${n++}`;
+    setPreset(next);
+    setDraft((d) => ({
+      ...d,
+      id,
+      name: next.name,
+      protocol: next.protocol,
+      baseUrl: next.chat || next.responses || next.anthropic || next.gemini || "",
+    }));
+    setMessage("");
+    setDiscovered([]);
+  }
+
   function openEdit(p: Provider) {
     if (busy) return;
     setAdding(false);
@@ -706,6 +734,30 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           <Notice tone="accent" icon={<Info size={16} />} live>
             {message}
           </Notice>
+        ) : null}
+
+        {pairShown ? (
+          <Field
+            label={t("prov.region")}
+            help={(pairShown.find((p) => p.id === preset?.id)?.chat ||
+              pairShown.find((p) => p.id === preset?.id)?.responses ||
+              pairShown.find((p) => p.id === preset?.id)?.anthropic ||
+              pairShown.find((p) => p.id === preset?.id)?.gemini ||
+              "")}
+          >
+            <Segmented
+              label={t("prov.region")}
+              value={preset?.id ?? ""}
+              onChange={(id) => {
+                const next = pairShown.find((p) => p.id === id);
+                if (next) switchPair(next);
+              }}
+              options={pairShown.map((p) => ({
+                value: p.id,
+                label: p.id.endsWith("-cn") ? t("add.china") : t("add.global"),
+              }))}
+            />
+          </Field>
         ) : null}
 
         <FormSection title={t("prov.secEndpoint")} description={t("prov.secEndpointDesc")}>
