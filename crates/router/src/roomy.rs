@@ -14,7 +14,7 @@ use serde_json::Value;
 /// text, tool arguments and schemas — the reference's `estimate`. Mostly code
 /// counts low and mostly-CJK text counts high, so a member is passed over
 /// only when the request is past its window by this count.
-pub(crate) fn estimate(req: &CompletionRequest) -> u64 {
+pub fn estimate(req: &CompletionRequest) -> u64 {
     let mut bytes = req.system.iter().map(part_bytes).sum::<u64>();
     for message in &req.messages {
         bytes += message.parts.iter().map(part_bytes).sum::<u64>();
@@ -54,7 +54,7 @@ fn json_bytes(value: &Value) -> u64 {
 /// Lite's route list never names one provider/model pair twice — a group's
 /// routes are deduplicated by pair and a provider's fallbacks by provider — so
 /// the route count is the reference's distinct-pair count.
-pub(crate) fn holds(windows: &[u64], tokens: u64) -> Option<Vec<bool>> {
+pub fn holds(windows: &[u64], tokens: u64) -> Option<Vec<bool>> {
     if windows.len() < 2 {
         return None;
     }

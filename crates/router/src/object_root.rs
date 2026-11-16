@@ -30,15 +30,15 @@ fn root_union_refusal() -> &'static Regex {
 
 /// Whether an upstream error body is a refusal of a union at a tool's
 /// parameter root.
-pub(crate) fn refusal(body: &Value) -> bool {
+pub fn refusal(body: &Value) -> bool {
     root_union_refusal().is_match(&body.to_string())
 }
 
 /// Whether requests to this provider/model/protocol should start with
 /// tool roots folded. xAI's own API takes no root union; another
 /// upstream starts folded only after it has refused one.
-pub(crate) fn folds_roots(provider: &ProviderConfig, model: &str) -> bool {
-    let xai = reqwest::Url::parse(&provider.base_url)
+pub fn folds_roots(provider: &ProviderConfig, model: &str) -> bool {
+    let xai = url::Url::parse(&provider.base_url)
         .ok()
         .and_then(|url| url.host_str().map(str::to_owned))
         .as_deref()
@@ -53,7 +53,7 @@ pub(crate) fn folds_roots(provider: &ProviderConfig, model: &str) -> bool {
 
 /// Fold every tool parameter schema in a request to an object root and
 /// report whether any schema changed.
-pub(crate) fn fold_tool_roots(body: &mut Value) -> bool {
+pub fn fold_tool_roots(body: &mut Value) -> bool {
     let mut changed = false;
     crate::tool_schema::tool_root_schemas(body, &mut |schema| {
         let root = schema.clone();

@@ -894,6 +894,7 @@ dependencies = [
  "httpdate",
  "magpie-agents",
  "magpie-core",
+ "magpie-router",
  "regex",
  "reqwest",
  "serde",
@@ -919,6 +920,32 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "magpie-router"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "dirs",
+ "fs2",
+ "futures",
+ "http",
+ "httpdate",
+ "magpie-core",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tempfile",
+ "thiserror",
+ "time",
+ "tokio",
+ "toml",
+ "tracing",
+ "url",
 ]
 
 [[package]]

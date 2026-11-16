@@ -54,7 +54,7 @@ fn ecma_class_for_rust(pattern: &str) -> String {
 
 /// Whether this model is one xAI serves, as its id is spelled on the
 /// wire: `grok-4.6`, `xai/grok-4.6`, a relay's `grok-4.6-fast`.
-pub(crate) fn grok_model(model: &str) -> bool {
+pub fn grok_model(model: &str) -> bool {
     let lower = model.to_ascii_lowercase();
     lower
         .rsplit('/')
@@ -64,7 +64,7 @@ pub(crate) fn grok_model(model: &str) -> bool {
 
 /// A request body with Grok's tool patterns spelled for its regex, or
 /// the body as it came when it is not Grok's or has no tool pattern.
-pub(crate) fn grok_tool_patterns(mut body: Value, model: &str, host: Option<&str>) -> Value {
+pub fn grok_tool_patterns(mut body: Value, model: &str, host: Option<&str>) -> Value {
     if host != Some("api.x.ai") && !grok_model(model) {
         return body;
     }

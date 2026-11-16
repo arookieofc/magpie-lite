@@ -221,7 +221,7 @@ pub const MAX_KEY_WEIGHT: u32 = 1000;
 pub const MAX_KEY_LIMIT: u32 = 1000;
 
 /// A provider rotates its key pool unless it says otherwise.
-pub(crate) fn default_provider_routing() -> RoutingPolicy {
+pub fn default_provider_routing() -> RoutingPolicy {
     RoutingPolicy::Rotate
 }
 
@@ -243,7 +243,7 @@ impl ProviderConfig {
             anyhow::bail!("base URL cannot contain whitespace");
         }
         self.capabilities.validate(self.protocol)?;
-        let url = reqwest::Url::parse(&self.base_url)
+        let url = url::Url::parse(&self.base_url)
             .map_err(|_| anyhow::anyhow!("base URL must be an absolute HTTP or HTTPS URL"))?;
         if !matches!(url.scheme(), "http" | "https")
             || url.host_str().is_none()

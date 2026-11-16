@@ -20,7 +20,7 @@ fn key(provider_id: &str, model: &str, protocol: &str, field: &str) -> String {
 }
 
 /// Remember that provider pid's model turned `field` away on `protocol`.
-pub(crate) fn refuse(provider_id: &str, model: &str, protocol: &str, field: &str) {
+pub fn refuse(provider_id: &str, model: &str, protocol: &str, field: &str) {
     set()
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -30,7 +30,7 @@ pub(crate) fn refuse(provider_id: &str, model: &str, protocol: &str, field: &str
 
 /// Says whether provider pid's model has turned `field` away on
 /// `protocol` before.
-pub(crate) fn unfit(provider_id: &str, model: &str, protocol: &str, field: &str) -> bool {
+pub fn unfit(provider_id: &str, model: &str, protocol: &str, field: &str) -> bool {
     set()
         .lock()
         .unwrap_or_else(|p| p.into_inner())

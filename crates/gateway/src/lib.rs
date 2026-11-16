@@ -1,56 +1,24 @@
 //! magpie-gateway: the local server agents talk to.
 
-pub mod affinity;
 pub mod agents;
-mod billing;
-pub mod classify;
-pub mod cline;
-pub mod config;
 pub mod config_store;
-mod continuation;
-pub mod cooldown;
-mod deepseek_schema;
-pub mod describe;
-mod edge_block;
-mod gemini_schema;
-mod grok_integral;
-mod grok_schema;
-mod kimi_schema;
-pub mod lanes;
-mod maxoutput;
-mod model_gone;
-pub mod model_rest;
-mod object_root;
-mod oneof_schema;
-mod optional_fields;
-pub mod presets;
-mod provider_tools;
-mod providers;
-mod reply_room;
-mod retired;
-mod roomy;
-pub mod rules;
+pub mod provider_tools;
+pub mod providers;
 pub mod server;
-mod stream_empty;
-mod stream_keepalive;
-mod stream_loop;
-mod stream_refusal;
-mod stream_status;
-mod stream_timeout;
-mod text_only;
-mod tool_loop;
-mod tool_schema;
-mod unfit_fields;
 pub mod upstream;
 pub mod usage;
-mod wrong_endpoint;
 
-pub use affinity::AffinityStore;
-pub use config::{
-    Affinity, Config, GroupConfig, KeyRotator, Protocol, ProviderCapabilities, ProviderConfig,
-    RoutingPolicy, config_path,
-};
 pub use config_store::ConfigStore;
-pub use retired::{init as init_retired_store, is_retired as model_is_retired};
-pub use rules::Rule;
 pub use server::{AppState, build_router, serve, serve_with_config_path};
+
+// The routing core now lives in magpie-router; re-export what the CLI and
+// downstream users need so `magpie_gateway::Config` etc. still work.
+pub use magpie_router::{
+    Affinity, AffinityStore, Config, GroupConfig, KeyRotator, Protocol, ProviderCapabilities,
+    ProviderConfig, RoutingPolicy, Rule, affinity, billing, classify, cline, config, continuation,
+    cooldown, deepseek_schema, describe, edge_block, gemini_schema, grok_integral, grok_schema,
+    kimi_schema, lanes, maxoutput, model_gone, model_rest, object_root, oneof_schema,
+    optional_fields, presets, reply_room, retired, roomy, rules, stream_empty, stream_keepalive,
+    stream_loop, stream_refusal, stream_status, stream_timeout, text_only, tool_loop, tool_schema,
+    unfit_fields, wrong_endpoint, config_path, init_retired_store, model_is_retired,
+};

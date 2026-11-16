@@ -2,16 +2,16 @@
 //! classification separate from transport/vendor errors and client dialects.
 use serde_json::Value;
 
-pub(crate) const EMPTY_REPLY: &str = "an empty reply (the model answered nothing; try again)";
+pub const EMPTY_REPLY: &str = "an empty reply (the model answered nothing; try again)";
 
 #[derive(Default)]
-pub(crate) struct GeminiReply {
+pub struct GeminiReply {
     answered: bool,
     exempt: bool,
 }
 
 impl GeminiReply {
-    pub(crate) fn observe(&mut self, body: &Value) {
+    pub fn observe(&mut self, body: &Value) {
         if body
             .pointer("/promptFeedback/blockReason")
             .or_else(|| body.pointer("/prompt_feedback/block_reason"))
@@ -92,11 +92,11 @@ impl GeminiReply {
         }
     }
 
-    pub(crate) fn has_answer(&self) -> bool {
+    pub fn has_answer(&self) -> bool {
         self.answered
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         !self.answered && !self.exempt
     }
 }

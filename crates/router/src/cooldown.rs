@@ -3,7 +3,7 @@
 use std::time::{Duration, SystemTime};
 
 use httpdate::HttpDate;
-use reqwest::header::HeaderMap;
+use http::HeaderMap;
 use serde_json::Value;
 
 /// Common headers that name how long until a quota or rate limit resets.
@@ -45,7 +45,7 @@ pub fn quota_cooldown(headers: &HeaderMap, body: Option<&Value>, fallback: Durat
     reset_hint.unwrap_or(fallback)
 }
 
-fn header_value(value: &reqwest::header::HeaderValue) -> Option<&str> {
+fn header_value(value: &http::HeaderValue) -> Option<&str> {
     value.to_str().ok().map(str::trim)
 }
 
@@ -271,13 +271,13 @@ fn merge_max(best: &mut Option<Duration>, candidate: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::header::{HeaderMap, HeaderValue};
+    use http::{HeaderMap, HeaderValue};
 
     fn headers(values: &[(&str, String)]) -> HeaderMap {
         let mut headers = HeaderMap::new();
         for (name, value) in values {
             headers.insert(
-                reqwest::header::HeaderName::try_from(*name).unwrap(),
+                http::HeaderName::try_from(*name).unwrap(),
                 HeaderValue::from_str(value).unwrap(),
             );
         }

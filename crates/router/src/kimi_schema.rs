@@ -23,13 +23,13 @@ const KIMI_HOSTS: [&str; 4] = [
 ];
 
 /// Whether this host is Moonshot's.
-pub(crate) fn kimi_host(host: Option<&str>) -> bool {
+pub fn kimi_host(host: Option<&str>) -> bool {
     host.is_some_and(|host| KIMI_HOSTS.contains(&host))
 }
 
 /// A request body whose tool schemas name the type of each untyped `enum`
 /// or `const`, or the body as it came when it is not Kimi's.
-pub(crate) fn kimi_tool_enum_types(mut body: Value, host: Option<&str>) -> Value {
+pub fn kimi_tool_enum_types(mut body: Value, host: Option<&str>) -> Value {
     if !kimi_host(host) {
         return body;
     }
@@ -45,7 +45,7 @@ pub(crate) fn kimi_tool_enum_types(mut body: Value, host: Option<&str>) -> Value
 /// infinite recursion without termination condition". Codex sends zod
 /// `$defs` that leave a `oneOf` or `allOf` target untyped, so the whole
 /// request fails though the tool is never called.
-pub(crate) fn kimi_tool_ref_types(mut body: Value, host: Option<&str>) -> Value {
+pub fn kimi_tool_ref_types(mut body: Value, host: Option<&str>) -> Value {
     if !kimi_host(host) || !body_has_ref(&body) {
         return body;
     }
@@ -422,7 +422,7 @@ fn values_type(values: &[&Value]) -> Option<&'static str> {
 /// A request body without `temperature` and `top_p` when the model's
 /// server locks them, or the body as it came when it is not Kimi's or the
 /// model takes a range.
-pub(crate) fn kimi_locked_sampling(mut body: Value, host: Option<&str>, model: &str) -> Value {
+pub fn kimi_locked_sampling(mut body: Value, host: Option<&str>, model: &str) -> Value {
     if !kimi_host(host) || !kimi_locked_model(model) {
         return body;
     }
@@ -436,7 +436,7 @@ pub(crate) fn kimi_locked_sampling(mut body: Value, host: Option<&str>, model: &
 /// Whether the model's server locks `temperature` and `top_p`:
 /// `kimi-for-coding*`, `kimi-k2.5` and later (`kimi-k2.6`, `kimi-k3`, …),
 /// and a bare `k3*`. A leading `vendor/` is ignored.
-pub(crate) fn kimi_locked_model(model: &str) -> bool {
+pub fn kimi_locked_model(model: &str) -> bool {
     let lower = model.to_ascii_lowercase();
     let name = lower.rsplit('/').next().unwrap_or(&lower);
     if name.starts_with("kimi-for-coding") {

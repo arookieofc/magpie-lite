@@ -52,7 +52,7 @@ fn unicode_null_escape(pattern: &str) -> Option<String> {
 /// A request body with DeepSeek's tool patterns spelled for its validator,
 /// or the body as it came when the provider is not DeepSeek's or nothing
 /// needed respelling.
-pub(crate) fn deepseek_tool_patterns(mut body: Value, host: Option<&str>) -> Value {
+pub fn deepseek_tool_patterns(mut body: Value, host: Option<&str>) -> Value {
     if host != Some("api.deepseek.com") {
         return body;
     }

@@ -178,8 +178,12 @@ async fn catalog(
         }
         // A Cline catalog check is answered like the desktop app's own
         // asks; any other host's request is untouched (`cline.go`).
-        let request = upstream::authenticate(request, provider.protocol, key);
-        let request = crate::cline::apply_cline_headers(request, &provider.base_url);
+        let mut request = upstream::authenticate(request, provider.protocol, key);
+        if let Some(headers) = crate::cline::cline_headers(&provider.base_url) {
+            for (name, value) in headers {
+                request = request.header(name, value);
+            }
+        }
         let response = request
             .send()
             .await

@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 magpie-agents = { path = "../agents" }
 magpie-core = { path = "../core" }
+magpie-router = { path = "../router" }
 anyhow.workspace = true
 async-stream.workspace = true
 axum.workspace = true

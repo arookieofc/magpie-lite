@@ -12,7 +12,7 @@
 use serde_json::{Map, Value};
 
 /// Keywords whose value is an object of schemas, one per name.
-pub(crate) const SCHEMA_MAP_KEYS: [&str; 5] = [
+pub const SCHEMA_MAP_KEYS: [&str; 5] = [
     "properties",
     "$defs",
     "definitions",
@@ -21,7 +21,7 @@ pub(crate) const SCHEMA_MAP_KEYS: [&str; 5] = [
 ];
 
 /// Keywords whose value is itself a schema, or an array of them.
-pub(crate) const SCHEMA_KEYS: [&str; 15] = [
+pub const SCHEMA_KEYS: [&str; 15] = [
     "items",
     "additionalProperties",
     "contains",
@@ -43,7 +43,7 @@ pub(crate) const SCHEMA_KEYS: [&str; 15] = [
 /// and report whether anything changed. `fix` answers `None` when the
 /// pattern needs nothing, so a schema that is already right costs no
 /// allocation.
-pub(crate) fn rewrite_patterns(
+pub fn rewrite_patterns(
     value: &mut Value,
     in_schema: bool,
     fix: fn(&str) -> Option<String>,
@@ -70,7 +70,7 @@ pub(crate) fn rewrite_patterns(
 /// through the keywords that hold another schema. Lite walks the value
 /// tree it just built, so unlike the reference it also reaches Gemini's
 /// `functionDeclarations` and a Responses namespace's `tools`.
-pub(crate) fn tool_schemas(body: &mut Value, visit: &mut impl FnMut(&mut Map<String, Value>)) {
+pub fn tool_schemas(body: &mut Value, visit: &mut impl FnMut(&mut Map<String, Value>)) {
     if let Some(tools) = body.get_mut("tools") {
         walk(tools, false, visit);
     }
@@ -79,7 +79,7 @@ pub(crate) fn tool_schemas(body: &mut Value, visit: &mut impl FnMut(&mut Map<Str
 /// Visit only the root parameter schemas of the tools in a request body.
 /// This is the walk a whole-schema rewrite uses when it must not turn a
 /// nested property union into an object root.
-pub(crate) fn tool_root_schemas(body: &mut Value, visit: &mut impl FnMut(&mut Map<String, Value>)) {
+pub fn tool_root_schemas(body: &mut Value, visit: &mut impl FnMut(&mut Map<String, Value>)) {
     if let Some(tools) = body.get_mut("tools") {
         walk_tool_roots(tools, visit);
     }

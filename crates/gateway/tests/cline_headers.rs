@@ -191,11 +191,13 @@ async fn cline_headers_satisfy_a_fake_cline_api() {
         .expect("send");
     assert_eq!(bare.status(), 403, "headerless ask refused");
     // With lite's Cline headers the same ask streams an answer.
-    let headed = cline::apply_cline_headers(
-        http.post(format!("{url}/v1/chat/completions"))
-            .bearer_auth("clp_key"),
-        "https://api.cline.bot/api/v1",
-    )
+    let mut headed_req = http
+        .post(format!("{url}/v1/chat/completions"))
+        .bearer_auth("clp_key");
+    for (name, value) in cline::cline_headers("https://api.cline.bot/api/v1").expect("headers") {
+        headed_req = headed_req.header(name, value);
+    }
+    let headed = headed_req
     .json(&body)
     .send()
     .await

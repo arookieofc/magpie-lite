@@ -1,10 +1,10 @@
 //! Structured status hints for errors carried inside an HTTP-200 SSE response.
 //! Do not classify free-form messages: invalid requests/refusals must not become
 //! quota failures merely because their prose contains a word like "limit".
-use reqwest::StatusCode;
+use http::StatusCode;
 use serde_json::Value;
 
-pub(crate) fn error_status(body: &Value) -> StatusCode {
+pub fn error_status(body: &Value) -> StatusCode {
     let error = body
         .pointer("/response/error")
         .or_else(|| body.get("error"))

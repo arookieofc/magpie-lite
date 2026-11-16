@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use axum::http::HeaderMap;
+use http::HeaderMap;
 use magpie_core::ir::{CompletionRequest, PartKind, Role};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -109,7 +109,7 @@ pub fn conversation_id(headers: &HeaderMap, body: &[u8]) -> String {
 
 /// The affinity stick key: the conversation, with a Claude Code subagent's
 /// conversation kept apart from its lead's.
-pub(crate) fn stick_key(headers: &HeaderMap, conversation: &str) -> String {
+pub fn stick_key(headers: &HeaderMap, conversation: &str) -> String {
     let subagent = headers
         .get(CLAUDE_AGENT_HEADER)
         .and_then(|value| value.to_str().ok())
@@ -124,7 +124,7 @@ pub(crate) fn stick_key(headers: &HeaderMap, conversation: &str) -> String {
 /// The same conversation id, using a body its caller already decoded.
 ///
 /// `body` is only the fallback hash when the request names no user turn.
-pub(crate) fn conversation_id_from_value(
+pub fn conversation_id_from_value(
     headers: &HeaderMap,
     value: &serde_json::Value,
     body: &[u8],
@@ -676,7 +676,7 @@ impl AffinityStore {
 
     /// Affinity for a caller that already derived the conversation id from a
     /// decoded request body.
-    pub(crate) fn affine_conversation(
+    pub fn affine_conversation(
         &self,
         scope: &str,
         mode: Affinity,

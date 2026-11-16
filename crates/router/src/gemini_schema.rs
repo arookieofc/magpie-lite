@@ -26,7 +26,7 @@ const SCHEMA_DEPTH: usize = 32;
 
 /// A request body whose Gemini tool schemas are spelled as Gemini reads
 /// them, or the body as it came when the upstream is not Gemini.
-pub(crate) fn gemini_tool_schemas(mut body: Value, gemini: bool) -> Value {
+pub fn gemini_tool_schemas(mut body: Value, gemini: bool) -> Value {
     if !gemini {
         return body;
     }

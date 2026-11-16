@@ -33,7 +33,7 @@ fn text_of(body: &Value) -> String {
 /// protocol errors and a relay that serves a model with tools on Responses
 /// alone (#1308: "gpt-6.1-sol requires Responses for tool calls; this
 /// account only supports Chat Completions").
-pub(crate) fn wrong_endpoint(status: u16, body: &Value) -> bool {
+pub fn wrong_endpoint(status: u16, body: &Value) -> bool {
     if !(400..500).contains(&status) {
         return false;
     }
@@ -71,7 +71,7 @@ pub(crate) fn wrong_endpoint(status: u16, body: &Value) -> bool {
 /// An upstream's word that the model is served, or served with what was
 /// asked, on OpenAI's Responses API: where a provider has no URL for it,
 /// the gateway says which URL to set (#1215, #1308, #2670).
-pub(crate) fn asks_responses(body: &Value) -> bool {
+pub fn asks_responses(body: &Value) -> bool {
     let text = text_of(body);
     [
         "requires responses",
@@ -91,7 +91,7 @@ pub(crate) fn asks_responses(body: &Value) -> bool {
 /// reasoning_effort are not supported for global.openai.gpt-6-luna in
 /// /v1/chat/completions. To use function tools, use /v1/responses or set
 /// reasoning_effort to 'none'." The relay in #2670 answers the same.
-pub(crate) fn tools_without_effort(body: &Value) -> bool {
+pub fn tools_without_effort(body: &Value) -> bool {
     let text = text_of(body);
     let Some(at) = text.find("tools with reasoning_effort are not supported") else {
         return false;
@@ -111,7 +111,7 @@ pub(crate) fn tools_without_effort(body: &Value) -> bool {
 /// An error that lists the reasoning levels a model takes, as one
 /// refusing `none` does: Command Code's `expected one of
 /// "low"|"medium"|"high"|"xhigh"|"max"` (#2670).
-pub(crate) fn effort_levels_named(body: &Value) -> bool {
+pub fn effort_levels_named(body: &Value) -> bool {
     use std::sync::OnceLock;
 
     static LEVELS: OnceLock<regex::Regex> = OnceLock::new();

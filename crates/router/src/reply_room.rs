@@ -27,7 +27,7 @@ use crate::config::Protocol;
 /// The least room left for a reply that is worth asking for: less, and the
 /// conversation needs compacting, which the refusal tells the agent as it
 /// came (DeepSeek's own default reply is 8K).
-pub(crate) const LEAST_REPLY_ROOM: u64 = 8192;
+pub const LEAST_REPLY_ROOM: u64 = 8192;
 
 /// The tokens the window has left for a reply after the prompt, read from
 /// a refusal that counts the reply asked for in the window: DeepSeek's and
@@ -37,7 +37,7 @@ pub(crate) const LEAST_REPLY_ROOM: u64 = 8192;
 /// tokens", or Anthropic's "input length and `max_tokens` exceed context
 /// limit: 970000 + 64000 > 1000000". `None` when the error is none of
 /// those, or the prompt alone fills the window.
-pub(crate) fn reply_left(message: &str) -> Option<u64> {
+pub fn reply_left(message: &str) -> Option<u64> {
     let (window, prompt) = if let Some(parts) = window_and_prompt().captures(message) {
         let window = captured(parts.get(1));
         // Group 2 is DeepSeek's "N in the messages"; group 3 is vLLM's
@@ -91,7 +91,7 @@ fn captured(capture: Option<regex::Match<'_>>) -> Option<u64> {
 /// that named none was given an allowance that was too large. Whether the
 /// body now asks for less than it did; `false` when it asked for no more
 /// already, or `protocol` keeps no such field this gateway sets.
-pub(crate) fn with_reply_cap(body: &mut Value, protocol: Protocol, limit: u64) -> bool {
+pub fn with_reply_cap(body: &mut Value, protocol: Protocol, limit: u64) -> bool {
     if limit == 0 {
         return false;
     }

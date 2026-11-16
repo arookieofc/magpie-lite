@@ -1,0 +1,27 @@
+[package]
+name = "magpie-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+magpie-core = { path = "../core" }
+anyhow.workspace = true
+async-stream.workspace = true
+dirs.workspace = true
+fs2.workspace = true
+futures.workspace = true
+http = "1"
+httpdate.workspace = true
+regex = "1"
+serde.workspace = true
+serde_json.workspace = true
+subtle.workspace = true
+sha2.workspace = true
+time.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tempfile = "3"
+tracing.workspace = true
+url = "2"

@@ -12,10 +12,10 @@ use tokio::time::Instant;
 /// Unlike upstream deadlines this never fails or resets on retry, or fabricates
 /// metadata when the upstream has not supplied an encodable Start event.
 #[derive(Clone, Copy)]
-pub(crate) struct ResponsesHold(Option<Instant>);
+pub struct ResponsesHold(Option<Instant>);
 
 impl ResponsesHold {
-    pub(crate) fn new(timeout_ms: u64) -> Self {
+    pub fn new(timeout_ms: u64) -> Self {
         Self(
             (timeout_ms > 0)
                 .then(|| Instant::now().checked_add(Duration::from_millis(timeout_ms)))
@@ -23,7 +23,7 @@ impl ResponsesHold {
         )
     }
 
-    pub(crate) async fn wait(&self) {
+    pub async fn wait(&self) {
         match self.0 {
             Some(deadline) => tokio::time::sleep_until(deadline).await,
             None => std::future::pending().await,
@@ -35,30 +35,30 @@ impl ResponsesHold {
 /// and unencoded events do not reset it; only a protocol event that is actually
 /// encoded and sent to the agent does. Retry pauses that would cross this
 /// boundary return the current failure instead of waiting past it.
-pub(crate) struct ResponsesQuiet {
+pub struct ResponsesQuiet {
     limit: Option<Duration>,
     told: Mutex<Instant>,
 }
 
 impl ResponsesQuiet {
-    pub(crate) fn new(timeout_ms: u64) -> Self {
+    pub fn new(timeout_ms: u64) -> Self {
         Self {
             limit: (timeout_ms > 0).then(|| Duration::from_millis(timeout_ms)),
             told: Mutex::new(Instant::now()),
         }
     }
 
-    pub(crate) fn observe_event(&self) {
+    pub fn observe_event(&self) {
         *self.told.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
     }
 
-    pub(crate) fn remaining(&self) -> Option<Duration> {
+    pub fn remaining(&self) -> Option<Duration> {
         let limit = self.limit?;
         let told = *self.told.lock().unwrap_or_else(|e| e.into_inner());
         Some(limit.saturating_sub(told.elapsed()))
     }
 
-    pub(crate) fn too_quiet_after(&self, extra: Duration) -> bool {
+    pub fn too_quiet_after(&self, extra: Duration) -> bool {
         match self.remaining() {
             Some(remaining) => extra >= remaining,
             None => false,
@@ -69,7 +69,7 @@ impl ResponsesQuiet {
     /// A zero configured wait means as long as needed; that still cannot
     /// outrun this budget. An already-expired budget becomes a 1ms timeout so
     /// lanes::take does not treat zero as an unbounded wait.
-    pub(crate) fn bound_wait(&self, wait: Duration) -> Duration {
+    pub fn bound_wait(&self, wait: Duration) -> Duration {
         match self.remaining() {
             None => wait,
             Some(remaining) if remaining.is_zero() => Duration::from_millis(1),
@@ -78,7 +78,7 @@ impl ResponsesQuiet {
         }
     }
 
-    pub(crate) fn bound_deadline(&self, deadline: std::time::Instant) -> std::time::Instant {
+    pub fn bound_deadline(&self, deadline: std::time::Instant) -> std::time::Instant {
         match self.remaining() {
             Some(remaining) => std::time::Instant::now()
                 .checked_add(remaining)
@@ -92,10 +92,10 @@ impl ResponsesQuiet {
 /// One upstream attempt's group budget. Use the same absolute deadline for
 /// headers and opening prefetch, then discard it once the candidate commits.
 /// Never apply it to the final available route or to an already-known HTTP error.
-pub(crate) struct GroupFirstToken(Option<Instant>);
+pub struct GroupFirstToken(Option<Instant>);
 
 impl GroupFirstToken {
-    pub(crate) fn new(timeout_ms: u64) -> Self {
+    pub fn new(timeout_ms: u64) -> Self {
         Self(
             (timeout_ms > 0)
                 .then(|| Instant::now().checked_add(Duration::from_millis(timeout_ms)))
@@ -103,7 +103,7 @@ impl GroupFirstToken {
         )
     }
 
-    pub(crate) async fn wait<T>(
+    pub async fn wait<T>(
         &self,
         future: impl Future<Output = T>,
     ) -> Result<T, StreamTimeout> {
@@ -117,7 +117,7 @@ impl GroupFirstToken {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StreamTimeout {
+pub enum StreamTimeout {
     FirstContent,
     Idle,
     Progress,
@@ -125,14 +125,14 @@ pub(crate) enum StreamTimeout {
 }
 
 impl StreamTimeout {
-    pub(crate) fn attempt_status(self) -> &'static str {
+    pub fn attempt_status(self) -> &'static str {
         match self {
             Self::GroupFirstToken => "group_first_token_timeout",
             _ => "504",
         }
     }
 
-    pub(crate) fn message(self) -> &'static str {
+    pub fn message(self) -> &'static str {
         match self {
             Self::FirstContent => "upstream first-content timeout",
             Self::Idle => "upstream stream idle timeout",
@@ -142,7 +142,7 @@ impl StreamTimeout {
     }
 }
 
-pub(crate) struct StreamClock {
+pub struct StreamClock {
     started: Instant,
     first_content: Option<Duration>,
     idle: Option<Duration>,
@@ -152,7 +152,7 @@ pub(crate) struct StreamClock {
 }
 
 impl StreamClock {
-    pub(crate) fn new(first_content_ms: u64, idle_ms: u64, progress_ms: u64) -> Self {
+    pub fn new(first_content_ms: u64, idle_ms: u64, progress_ms: u64) -> Self {
         Self {
             started: Instant::now(),
             first_content: (first_content_ms > 0).then(|| Duration::from_millis(first_content_ms)),
@@ -163,7 +163,7 @@ impl StreamClock {
         }
     }
 
-    pub(crate) fn observe(&mut self, event: &StreamEvent) {
+    pub fn observe(&mut self, event: &StreamEvent) {
         let content = event.is_content();
         if content {
             self.first_content = None;
@@ -173,14 +173,14 @@ impl StreamClock {
         }
     }
 
-    pub(crate) async fn headers<T>(
+    pub async fn headers<T>(
         &self,
         future: impl Future<Output = T>,
     ) -> Result<T, StreamTimeout> {
         self.wait(future, None, None).await
     }
 
-    pub(crate) async fn chunk<T>(
+    pub async fn chunk<T>(
         &mut self,
         future: impl Future<Output = T>,
     ) -> Result<T, StreamTimeout> {
@@ -200,7 +200,7 @@ impl StreamClock {
     /// transport chunk resets idle but carries the decoded-content progress
     /// budget; releasing the opening event carries both. Neither counts
     /// downstream backpressure or grants a new full interval for this read.
-    pub(crate) async fn held_chunk<T>(
+    pub async fn held_chunk<T>(
         &mut self,
         future: impl Future<Output = T>,
         hold: &ResponsesHold,

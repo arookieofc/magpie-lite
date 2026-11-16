@@ -16,22 +16,22 @@ const RUN_ON_UNITS: usize = 2;
 const RUN_ON_DISTINCT: usize = 8;
 
 #[derive(Default)]
-pub(crate) struct LoopGuard {
+pub struct LoopGuard {
     reasoning: UnitRun,
     text: UnitRun,
 }
 
-pub(crate) struct LoopTrip {
+pub struct LoopTrip {
     reasoning: bool,
     run_on: bool,
 }
 
 impl LoopTrip {
-    pub(crate) fn is_reasoning(&self) -> bool {
+    pub fn is_reasoning(&self) -> bool {
         self.reasoning
     }
 
-    pub(crate) fn message(&self) -> &'static str {
+    pub fn message(&self) -> &'static str {
         // Unlike the reference, do not quote repeated reply text: the same
         // error may travel to an agent log or a proxy's diagnostics.
         match (self.reasoning, self.run_on) {
@@ -52,7 +52,7 @@ impl LoopTrip {
 }
 
 impl LoopGuard {
-    pub(crate) fn observe(&mut self, event: &StreamEvent) -> Option<LoopTrip> {
+    pub fn observe(&mut self, event: &StreamEvent) -> Option<LoopTrip> {
         let (run, text, reasoning) = match event {
             StreamEvent::TextDelta { text } => (&mut self.text, text, false),
             StreamEvent::ThinkingDelta { text } => (&mut self.reasoning, text, true),
@@ -346,8 +346,6 @@ mod tests {
             assert!(feed(&mut LoopGuard::default(), &normal, reasoning, 7).is_none());
         }
         for source in [
-            include_str!("server.rs"),
-            include_str!("console.html"),
             include_str!("stream_timeout.rs"),
             include_str!("../../../README.md"),
         ] {

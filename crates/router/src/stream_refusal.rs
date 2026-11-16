@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::config::Protocol;
 use crate::stream_empty::GeminiReply;
 
-pub(crate) const REFUSAL: &str = "safety filter: upstream refused the request";
+pub const REFUSAL: &str = "safety filter: upstream refused the request";
 
 fn filter_reason(reason: &str) -> bool {
     matches!(
@@ -24,7 +24,7 @@ fn filter_reason(reason: &str) -> bool {
 
 /// Explicit policy codes, including the reference's *_policy family. Ordinary
 /// invalid_prompt and messages merely discussing safety remain ordinary errors.
-pub(crate) fn policy_error(value: &Value) -> bool {
+pub fn policy_error(value: &Value) -> bool {
     [
         value.pointer("/response/error"),
         value.get("error"),
@@ -54,7 +54,7 @@ pub(crate) fn policy_error(value: &Value) -> bool {
     })
 }
 
-pub(crate) fn filtered(protocol: Protocol, value: &Value) -> bool {
+pub fn filtered(protocol: Protocol, value: &Value) -> bool {
     let reason = match protocol {
         Protocol::Chat => value.pointer("/choices/0/finish_reason"),
         Protocol::Anthropic => value
@@ -109,7 +109,7 @@ fn parts_said(value: Option<&Value>, reasoning: bool) -> bool {
     })
 }
 
-pub(crate) fn has_answer(protocol: Protocol, value: &Value, reasoning: bool) -> bool {
+pub fn has_answer(protocol: Protocol, value: &Value, reasoning: bool) -> bool {
     match protocol {
         Protocol::Chat => {
             let message = value
@@ -171,7 +171,7 @@ pub(crate) fn has_answer(protocol: Protocol, value: &Value, reasoning: bool) -> 
     }
 }
 
-pub(crate) fn event_answers(event: &StreamEvent) -> bool {
+pub fn event_answers(event: &StreamEvent) -> bool {
     event.is_answer()
 }
 

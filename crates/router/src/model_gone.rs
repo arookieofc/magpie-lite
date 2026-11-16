@@ -54,7 +54,7 @@ fn error_text(body: &Value) -> String {
 
 /// The vendor says this model is retired there: another provider of the
 /// same model may still serve it, so the next route is worth trying.
-pub(crate) fn model_retired(status: u16, body: &Value) -> bool {
+pub fn model_retired(status: u16, body: &Value) -> bool {
     match status {
         400 | 404 | 410 | 422 => {}
         401 => {
@@ -69,7 +69,7 @@ pub(crate) fn model_retired(status: u16, body: &Value) -> bool {
 /// The vendor turned this request away over its model alone: not one
 /// this key's plan serves, or not one this endpoint serves. The next
 /// route may still serve it.
-pub(crate) fn model_refused(status: u16, body: &Value) -> bool {
+pub fn model_refused(status: u16, body: &Value) -> bool {
     if model_retired(status, body) {
         return true;
     }
@@ -119,7 +119,7 @@ fn shape_words() -> &'static Regex {
 /// than the one asked is one, once no other route of this member is left
 /// (#2670: a relay with a Chat URL alone, refusing tools with reasoning
 /// and `none` too).
-pub(crate) fn shape_refused(status: u16, body: &Value) -> bool {
+pub fn shape_refused(status: u16, body: &Value) -> bool {
     if !matches!(status, 400 | 422) {
         return false;
     }
@@ -184,7 +184,7 @@ fn pace_words() -> &'static Regex {
 /// please wait") is a rate limit; neither is overflow. The reference
 /// gateway's `overflowed`/`tooLong` pair, without its token-estimate
 /// half: whether every vendor's phrasing of the same refusal.
-pub(crate) fn context_overflowed(status: u16, body: &Value) -> bool {
+pub fn context_overflowed(status: u16, body: &Value) -> bool {
     if !matches!(status, 400 | 413 | 422) {
         return false;
     }
@@ -199,7 +199,7 @@ pub(crate) fn context_overflowed(status: u16, body: &Value) -> bool {
 /// The vendor refused this conversation outright (an unapproved channel
 /// or illegal API invocation): another provider may accept it, and the
 /// refusing one is not broken, so it doesn't rest.
-pub(crate) fn prompt_refused(status: u16, body: &Value) -> bool {
+pub fn prompt_refused(status: u16, body: &Value) -> bool {
     status >= 400 && refused_words().is_match(&body.to_string())
 }
 
@@ -207,7 +207,7 @@ pub(crate) fn prompt_refused(status: u16, body: &Value) -> bool {
 /// conversation: it answers 4xx/5xx no matter what is asked. Another
 /// provider may still serve it, and the refusing one doesn't rest —
 /// notably a 502 here must not count as a busy outage.
-pub(crate) fn protection_refused(status: u16, body: &Value) -> bool {
+pub fn protection_refused(status: u16, body: &Value) -> bool {
     status >= 400 && protection_words().is_match(&body.to_string())
 }
 
@@ -216,7 +216,7 @@ pub(crate) fn protection_refused(status: u16, body: &Value) -> bool {
 /// reference's `plainForbidden`, d5bc9f00 / plugins#243). Such a 403 may
 /// be the key's or the request's; when two keys of one provider answer
 /// one request alike, it is the request that is refused, not each key.
-pub(crate) fn plain_forbidden(status: u16, body: &Value) -> bool {
+pub fn plain_forbidden(status: u16, body: &Value) -> bool {
     if status != 403 {
         return false;
     }
@@ -233,7 +233,7 @@ pub(crate) fn plain_forbidden(status: u16, body: &Value) -> bool {
 /// request's setting, not the model or the key failing: nothing rests,
 /// the same provider's other keys are not asked (they would be sent the
 /// same header), and another member may serve it.
-pub(crate) fn zdr_refused(status: u16, body: &Value) -> bool {
+pub fn zdr_refused(status: u16, body: &Value) -> bool {
     (status == 400 || status == 422) && zdr_coded().is_match(&body.to_string())
 }
 

@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 /// What a vendor's edge firewall blocking this address means, in plain
 /// words (Alibaba Cloud's ESA answers a 405 HTML page, "Sorry, your
 /// request has been blocked due to unusual activity").
-pub(crate) const BLOCKED_HINT: &str = "the provider's network firewall blocked requests from this IP; wait a while, or switch to another network or proxy";
+pub const BLOCKED_HINT: &str = "the provider's network firewall blocked requests from this IP; wait a while, or switch to another network or proxy";
 
 fn blocked_words() -> &'static Regex {
     static BLOCKED: OnceLock<Regex> = OnceLock::new();
@@ -25,12 +25,12 @@ fn blocked_words() -> &'static Regex {
 }
 
 /// Says whether raw upstream error text is a firewall's block page.
-pub(crate) fn edge_blocked_text(text: &str) -> bool {
+pub fn edge_blocked_text(text: &str) -> bool {
     blocked_words().is_match(text)
 }
 
 /// Says whether a parsed error body is a firewall's block page.
-pub(crate) fn edge_blocked(body: &Value) -> bool {
+pub fn edge_blocked(body: &Value) -> bool {
     if body.is_null() {
         return false;
     }

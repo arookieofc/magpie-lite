@@ -17,7 +17,7 @@ use std::time::{Duration, SystemTime};
 /// is what brings it back, and the vendor's list still has it, so a
 /// refresh can't be the end of it. A week later it is listed again, and
 /// the next request it gets refused so takes it out again.
-pub(crate) const RETIRED_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+pub const RETIRED_FOR: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct RetiredFile {
@@ -87,7 +87,7 @@ pub fn init(path: PathBuf) {
 
 /// Note that provider pid's vendor said model is retired: it leaves the
 /// catalog for that provider until it answers again or the week passes.
-pub(crate) fn retire(provider_id: &str, model: &str, now: SystemTime) {
+pub fn retire(provider_id: &str, model: &str, now: SystemTime) {
     if !enabled() {
         return;
     }
@@ -99,7 +99,7 @@ pub(crate) fn retire(provider_id: &str, model: &str, now: SystemTime) {
 }
 
 /// Take back a retirement when it has one: the vendor answered a request.
-pub(crate) fn unretire(provider_id: &str, model: &str, now: SystemTime) {
+pub fn unretire(provider_id: &str, model: &str, now: SystemTime) {
     if !enabled() {
         return;
     }

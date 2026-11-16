@@ -26,23 +26,23 @@ use crate::config::{Protocol, ProviderConfig};
 
 /// How many times a cut reply is asked to go on before it ends with the
 /// error, as it used to at once (the reference's `streamRetries`).
-pub(crate) const STREAM_RETRIES: usize = 2;
+pub const STREAM_RETRIES: usize = 2;
 
 /// `reask_stream`'s answer when the continuation's prefill was turned
 /// away: the caller ends the reply with what cut it, not with this.
-pub(crate) const PREFILL_REFUSED: &str = "prefill refused";
+pub const PREFILL_REFUSED: &str = "prefill refused";
 
 /// The user turn asked after a conversation the client ended with the
 /// assistant's message, for a model that takes no prefill
 /// (the reference's `continueText`, #1447): OpenAI's Chat and Responses
 /// APIs read such a conversation as a turn already said, not one to go
 /// on from, so the model is asked to answer after it.
-pub(crate) const CONTINUE_TEXT: &str = "Continue.";
+pub const CONTINUE_TEXT: &str = "Continue.";
 
 /// Whether `req`'s conversation ends with the assistant's message rather
 /// than a call it made: what a prefill is (the reference's
 /// `endsWithAssistant`).
-pub(crate) fn ends_with_assistant(req: &CompletionRequest) -> bool {
+pub fn ends_with_assistant(req: &CompletionRequest) -> bool {
     let Some(last) = req.messages.last() else {
         return false;
     };
@@ -59,7 +59,7 @@ pub(crate) fn ends_with_assistant(req: &CompletionRequest) -> bool {
 /// message when that is the assistant's; `None` when it isn't (the
 /// reference's `userLastBody`). A call the assistant made last still
 /// waits on its results — nothing is added after it.
-pub(crate) fn user_last_body(protocol: Protocol, body: &Value) -> Option<Value> {
+pub fn user_last_body(protocol: Protocol, body: &Value) -> Option<Value> {
     let chat = protocol == Protocol::Chat;
     if !chat && protocol != Protocol::Responses {
         return None;
@@ -94,14 +94,14 @@ pub(crate) fn user_last_body(protocol: Protocol, body: &Value) -> Option<Value> 
 /// with the assistant's message (the reference's `prefillRefused`): keyed
 /// on the model, so one model's refusal doesn't tar the provider's
 /// others.
-pub(crate) fn prefill_refused_field(model: &str) -> String {
+pub fn prefill_refused_field(model: &str) -> String {
     format!("prefill\u{0}{model}")
 }
 
 /// Whether an upstream's answer refuses a conversation ending with the
 /// assistant's message (the reference's `prefillRefusal`/`refusesPrefill`):
 /// a 400 that names prefill or a trailing model turn.
-pub(crate) fn refuses_prefill(status: u16, body: &Value) -> bool {
+pub fn refuses_prefill(status: u16, body: &Value) -> bool {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
     let re = RE.get_or_init(|| {
         regex::Regex::new(
@@ -121,7 +121,7 @@ pub(crate) fn refuses_prefill(status: u16, body: &Value) -> bool {
 /// model's own name says which, as the relay forwards either mode to the
 /// vendor it fronts. `""` where the upstream answers the message again
 /// from the start instead.
-pub(crate) fn prefill_how(provider: &ProviderConfig, model: &str) -> &'static str {
+pub fn prefill_how(provider: &ProviderConfig, model: &str) -> &'static str {
     match provider.protocol {
         Protocol::Anthropic => "anthropic",
         Protocol::Chat => chat_prefill(provider, model),
@@ -130,7 +130,7 @@ pub(crate) fn prefill_how(provider: &ProviderConfig, model: &str) -> &'static st
 }
 
 fn chat_prefill(provider: &ProviderConfig, model: &str) -> &'static str {
-    let host = reqwest::Url::parse(&provider.base_url)
+    let host = url::Url::parse(&provider.base_url)
         .ok()
         .and_then(|url| url.host_str().map(str::to_owned))
         .unwrap_or_default()
@@ -179,16 +179,16 @@ fn is_private(ip: std::net::IpAddr) -> bool {
 
 /// What of a translated reply the client already has, so a cut reply's
 /// next ask goes on from there and only what is new goes to the client.
-pub(crate) struct Continuation {
+pub struct Continuation {
     think: String,
     text: String,
     /// A tool call was begun: the reply can't go on.
     tools: bool,
     /// How the upstream goes on from a prefill (prefill_how), "" where it
     /// can't.
-    pub(crate) mode: &'static str,
+    pub mode: &'static str,
     /// This try is a continuation.
-    pub(crate) resume: bool,
+    pub resume: bool,
     /// The text it was prefilled with: a full echo of it is dropped.
     echo: String,
     /// What of a possible echo has come.
@@ -196,7 +196,7 @@ pub(crate) struct Continuation {
 }
 
 impl Continuation {
-    pub(crate) fn new(mode: &'static str) -> Self {
+    pub fn new(mode: &'static str) -> Self {
         Self {
             think: String::new(),
             text: String::new(),
@@ -209,7 +209,7 @@ impl Continuation {
     }
 
     /// Journal an event the client has.
-    pub(crate) fn add(&mut self, event: &magpie_core::stream::StreamEvent) {
+    pub fn add(&mut self, event: &magpie_core::stream::StreamEvent) {
         use magpie_core::stream::StreamEvent as E;
         match event {
             E::ThinkingDelta { text } => self.think.push_str(text),
@@ -222,14 +222,14 @@ impl Continuation {
     /// Whether the reply can go on: the upstream goes on from a prefill
     /// at all, the client has something of it, and no tool call of it
     /// was begun.
-    pub(crate) fn possible(&self) -> bool {
+    pub fn possible(&self) -> bool {
         !self.mode.is_empty() && !self.tools && (!self.think.is_empty() || !self.text.is_empty())
     }
 
     /// Whether the cut reply goes on with another try, and readies it:
     /// not a refusal (a 4xx the same ask gets again), the tries not up.
     /// `status` is the failure's HTTP status, 0 for a transport cut.
-    pub(crate) fn again(&mut self, status: u16, refusal: bool, tries: usize) -> bool {
+    pub fn again(&mut self, status: u16, refusal: bool, tries: usize) -> bool {
         if refusal
             || status == 400
             || status == 422
@@ -256,7 +256,7 @@ impl Continuation {
 
     /// `orig` with what the client has of the reply sent back as the
     /// last message, for the model to go on from.
-    pub(crate) fn request(&self, orig: &CompletionRequest) -> CompletionRequest {
+    pub fn request(&self, orig: &CompletionRequest) -> CompletionRequest {
         let mut request = orig.clone();
         let mut parts = Vec::new();
         if !self.think.is_empty() {
@@ -279,7 +279,7 @@ impl Continuation {
     /// with it where the upstream reads `reasoning_content` back. An
     /// Anthropic upstream takes the trailing assistant message natively,
     /// so nothing is marked there.
-    pub(crate) fn mark(&self, body: &mut Value) {
+    pub fn mark(&self, body: &mut Value) {
         if self.mode == "anthropic" || self.mode.is_empty() {
             return;
         }
@@ -322,7 +322,7 @@ impl Continuation {
     /// Whether the continuation's ask goes to a different path: DeepSeek
     /// serves its prefix mode under /beta, beside the /v1 the base
     /// carries (the reference's `req.Resume` path rewrite).
-    pub(crate) fn base_url(&self, provider: &ProviderConfig) -> String {
+    pub fn base_url(&self, provider: &ProviderConfig) -> String {
         let base = provider.base_url.trim_end_matches('/');
         if self.mode == "prefix"
             && let Some(root) = base.strip_suffix("/v1")
@@ -335,7 +335,7 @@ impl Continuation {
     /// Drop a full echo of the text the reply was prefilled with,
     /// holding what could still be one until it reads either way. What
     /// the model says instead of echoing goes whole.
-    pub(crate) fn unecho(&mut self, delta: String) -> String {
+    pub fn unecho(&mut self, delta: String) -> String {
         if self.echo.is_empty() {
             return delta;
         }

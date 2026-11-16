@@ -193,7 +193,11 @@ pub async fn send_at(
     // app's headers (the reference's `ClineClient`, `cline.go`). The
     // headers ride on the effective base, so a continuation's base
     // override decides too; any other host's request is untouched.
-    req = crate::cline::apply_cline_headers(req, base);
+    if let Some(headers) = crate::cline::cline_headers(base) {
+        for (name, value) in headers {
+            req = req.header(name, value);
+        }
+    }
 
     let resp = req.json(body).send().await?;
     Ok(resp)

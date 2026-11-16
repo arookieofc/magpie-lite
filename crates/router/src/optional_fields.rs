@@ -13,7 +13,7 @@ use serde_json::Value;
 /// Request fields OpenAI's APIs take that a request does without, plus
 /// the thinking switches Kimi and Qwen take. Only these are ever
 /// dropped; any other refusal is the client's to fix.
-pub(crate) const OPTIONAL_FIELDS: &[&str] = &[
+pub const OPTIONAL_FIELDS: &[&str] = &[
     "store",
     "metadata",
     "service_tier",
@@ -30,7 +30,7 @@ pub(crate) const OPTIONAL_FIELDS: &[&str] = &[
 /// A 400 or 422 is a refusal over the request; anything else is an
 /// outage or a quota and none of this applies (the reference
 /// `badRequest`).
-pub(crate) fn bad_request(status: u16) -> bool {
+pub fn bad_request(status: u16) -> bool {
     status == 400 || status == 422
 }
 
@@ -173,7 +173,7 @@ fn error_object(fault: &Value) -> bool {
 /// the nested error value; a proxy can embed the vendor's JSON error in
 /// prose, so a string fault is searched for an embedded error object
 /// before its text is matched.
-pub(crate) fn refused_optional(status: u16, body: &Value, fault: &Value) -> Vec<&'static str> {
+pub fn refused_optional(status: u16, body: &Value, fault: &Value) -> Vec<&'static str> {
     if !bad_request(status) {
         return Vec::new();
     }
@@ -188,7 +188,7 @@ pub(crate) fn refused_optional(status: u16, body: &Value, fault: &Value) -> Vec<
 }
 
 /// The request body with the refused fields left out.
-pub(crate) fn without_fields(body: &Value, fields: &[&str]) -> Value {
+pub fn without_fields(body: &Value, fields: &[&str]) -> Value {
     let mut body = body.clone();
     if let Some(map) = body.as_object_mut() {
         for field in fields {

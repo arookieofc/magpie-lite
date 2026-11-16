@@ -14,16 +14,16 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 /// How many consecutive identical tool exchanges stop the next turn.
-pub(crate) const REPEATS: usize = 8;
+pub const REPEATS: usize = 8;
 
 /// A detected tool loop and the newest exchange's calls.
-pub(crate) struct ToolLoop {
+pub struct ToolLoop {
     calls: Vec<Part>,
     turns: usize,
 }
 
 /// Detect the tool loop a conversation ends in.
-pub(crate) fn detect(messages: &[Message]) -> Option<ToolLoop> {
+pub fn detect(messages: &[Message]) -> Option<ToolLoop> {
     let exchanges = exchanges(messages);
     if exchanges.len() < REPEATS {
         return None;
@@ -42,7 +42,7 @@ pub(crate) fn detect(messages: &[Message]) -> Option<ToolLoop> {
 
 impl ToolLoop {
     /// Why the request was rejected, for usage and diagnostics.
-    pub(crate) fn why(&self) -> String {
+    pub fn why(&self) -> String {
         format!(
             "tool loop: the same tool call got the same result {} turns in a row ({}); answered by magpie, sent nowhere",
             self.turns,
@@ -51,7 +51,7 @@ impl ToolLoop {
     }
 
     /// The local assistant reply shown to the agent.
-    pub(crate) fn notice(&self) -> String {
+    pub fn notice(&self) -> String {
         format!(
             "magpie stopped this turn before it reached the model: the agent ran the same tool call {} times in a row and got the same result every time ({}). The model is stuck repeating it, and each further turn would spend your quota with no progress, so this turn was sent nowhere. Tell the agent how to go on and the conversation continues; stream_loop_guard = false turns this check off.",
             self.turns,

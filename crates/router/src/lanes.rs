@@ -343,7 +343,7 @@ impl Rpms {
     }
 
     /// How many of `who`'s requests are counted in its minute now.
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn used(&self, who: &str) -> usize {
         let now = Instant::now();
         let map = self.inner.lock().unwrap_or_else(|p| p.into_inner());

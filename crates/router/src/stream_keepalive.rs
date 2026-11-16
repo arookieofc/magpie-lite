@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-pub(crate) const COMMENT: &[u8] = b": keepalive\n";
+pub const COMMENT: &[u8] = b": keepalive\n";
 const ACTIVE_GAP: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy)]
@@ -17,14 +17,14 @@ struct Activity {
 /// Transport activity is shared with the response owner, not a spawned task.
 /// Disabled requests incur no channel allocation or per-chunk notification.
 #[derive(Clone, Default)]
-pub(crate) struct UpstreamActivity(Option<watch::Sender<Activity>>);
+pub struct UpstreamActivity(Option<watch::Sender<Activity>>);
 
 impl UpstreamActivity {
-    pub(crate) fn attempt(&self) {
+    pub fn attempt(&self) {
         self.headers(true);
     }
 
-    pub(crate) fn headers(&self, success: bool) {
+    pub fn headers(&self, success: bool) {
         if let Some(sender) = &self.0 {
             sender.send_replace(Activity {
                 heard: Instant::now(),
@@ -34,7 +34,7 @@ impl UpstreamActivity {
         }
     }
 
-    pub(crate) fn chunk(&self, bytes: &[u8]) {
+    pub fn chunk(&self, bytes: &[u8]) {
         if !bytes.is_empty()
             && let Some(sender) = &self.0
         {
@@ -43,7 +43,7 @@ impl UpstreamActivity {
     }
 }
 
-pub(crate) struct Keepalive {
+pub struct Keepalive {
     // Retain a sender so wait() cannot spin on a closed notification channel.
     _activity: UpstreamActivity,
     receiver: watch::Receiver<Activity>,
@@ -52,7 +52,7 @@ pub(crate) struct Keepalive {
 }
 
 impl Keepalive {
-    pub(crate) fn new(interval_ms: u64, max_silence_ms: u64) -> (UpstreamActivity, Option<Self>) {
+    pub fn new(interval_ms: u64, max_silence_ms: u64) -> (UpstreamActivity, Option<Self>) {
         if interval_ms == 0 || max_silence_ms == 0 {
             return (UpstreamActivity::default(), None);
         }
@@ -89,7 +89,7 @@ impl Keepalive {
 
     /// Wait without consuming or restarting the upstream future. Activity can
     /// resume comments after the silence cap, but comments themselves cannot.
-    pub(crate) async fn wait(&mut self, wrote: Instant, passing: bool) {
+    pub async fn wait(&mut self, wrote: Instant, passing: bool) {
         loop {
             let activity = *self.receiver.borrow_and_update();
             let due = self.due(activity, wrote, passing);

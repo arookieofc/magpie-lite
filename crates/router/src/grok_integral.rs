@@ -30,7 +30,7 @@ use crate::grok_schema::grok_model;
 
 /// Whether a request is Grok's, by the id the client asked for or the name it
 /// is sent upstream under (`xai/grok-4.5`, a relay's `grok-4.6-fast`).
-pub(crate) fn grok_served(client_model: &str, upstream_model: &str) -> bool {
+pub fn grok_served(client_model: &str, upstream_model: &str) -> bool {
     grok_model(client_model) || grok_model(upstream_model)
 }
 
@@ -41,7 +41,7 @@ pub(crate) fn grok_served(client_model: &str, upstream_model: &str) -> bool {
 /// it came; so a piece never waits on the next one for anything but such a
 /// fraction, and nothing is held at the end.
 #[derive(Debug, Default, Clone)]
-pub(crate) struct WholeNumbers {
+pub struct WholeNumbers {
     /// In a string.
     in_string: bool,
     /// Just after the string's backslash.
@@ -57,7 +57,7 @@ pub(crate) struct WholeNumbers {
 impl WholeNumbers {
     /// Rewrite one piece of JSON text, together with whatever an earlier
     /// piece left held.
-    pub(crate) fn feed(&mut self, s: &str) -> String {
+    pub fn feed(&mut self, s: &str) -> String {
         let mut out = String::with_capacity(s.len());
         for c in s.chars() {
             if self.in_number {
@@ -120,7 +120,7 @@ impl WholeNumbers {
 
 /// A call's whole arguments with the zero fraction of each of their numbers
 /// dropped.
-pub(crate) fn whole_args(s: &str) -> String {
+pub fn whole_args(s: &str) -> String {
     if !s.contains('.') {
         return s.to_owned();
     }
@@ -146,7 +146,7 @@ fn whole_args_value(args: &Value) -> Value {
 
 /// A whole reply from a Grok model with its calls' arguments' zero fractions
 /// dropped.
-pub(crate) fn whole_reply(reply: &mut CompletionResponse) {
+pub fn whole_reply(reply: &mut CompletionResponse) {
     for part in &mut reply.message.parts {
         if part.kind() != PartKind::ToolCall || part.args.is_null() {
             continue;
@@ -159,7 +159,7 @@ pub(crate) fn whole_reply(reply: &mut CompletionResponse) {
 /// arguments are rewritten where they are cut into deltas, so what the deltas
 /// add up to is what the call says when it is done.
 #[derive(Debug, Default)]
-pub(crate) struct GrokIntegral {
+pub struct GrokIntegral {
     /// Whether this reply is a Grok model's at all.
     applies: bool,
     /// A streamed call's arguments so far, by its index.
@@ -168,7 +168,7 @@ pub(crate) struct GrokIntegral {
 
 impl GrokIntegral {
     /// State for one reply, given whether its model is Grok's.
-    pub(crate) fn new(applies: bool) -> Self {
+    pub fn new(applies: bool) -> Self {
         Self {
             applies,
             calls: HashMap::new(),
@@ -177,14 +177,14 @@ impl GrokIntegral {
 
     /// Forget the arguments streamed so far. A reasked reply starts its calls
     /// over, so a held fraction from the abandoned one must not leak into it.
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.calls.clear();
     }
 
     /// Rewrite one event in place and say whether it still carries something
     /// to send. Only a delta that was nothing but a held fraction is dropped;
     /// every other event goes on unchanged.
-    pub(crate) fn event(&mut self, event: &mut StreamEvent) -> bool {
+    pub fn event(&mut self, event: &mut StreamEvent) -> bool {
         if !self.applies {
             return true;
         }

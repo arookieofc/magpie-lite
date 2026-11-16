@@ -19,7 +19,7 @@ use serde_json::{Map, Value};
 /// A request body with OpenRouter's tool schemas reading `anyOf` where
 /// they said `oneOf`, or the body as it came when OpenRouter is not the
 /// host.
-pub(crate) fn one_of_as_any_of(mut body: Value, host: Option<&str>) -> Value {
+pub fn one_of_as_any_of(mut body: Value, host: Option<&str>) -> Value {
     if host != Some("openrouter.ai") {
         return body;
     }
