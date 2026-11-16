@@ -229,6 +229,9 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   const [draft, setDraft] = useState<Draft>(blankDraft(false));
   const [message, setMessage] = useState("");
   const [discovered, setDiscovered] = useState<string[]>([]);
+  const [showPoolKeys, setShowPoolKeys] = useState(false);
+  // A fresh draft hides its keys again, like upstream's per-open eye.
+  useEffect(() => { setShowPoolKeys(false); }, [editing]);
   const providers = config?.providers ?? [];
 
   // The Add sheet: vendor tiles prefill a new draft, like upstream's
@@ -944,13 +947,18 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           <p className="help">{t("prov.keysHelp")}</p>
           {showKeys ? (
             <Field label={t("prov.newKeys")} htmlFor="provider-keys" help={t("prov.newKeysHelp")}>
-              <textarea id="provider-keys" className="input mono secret" rows={3} autoComplete="off" spellCheck={false}
+              <textarea id="provider-keys" className={`input mono${showPoolKeys ? "" : " secret"}`} rows={3} autoComplete="off" spellCheck={false}
                 value={draft.keys} onChange={(e) => set({ keys: e.target.value })} />
-              {poolKeyCount > 1 ? (
-                <p className="help" role="status" title={t("prov.keysCountTitle", { n: poolKeyCount })}>
-                  {t("prov.nKeys", { n: poolKeyCount })}
-                </p>
-              ) : null}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button type="button" className="link" onClick={() => setShowPoolKeys((v) => !v)}>
+                  {showPoolKeys ? t("prov.hide") : t("prov.show")}
+                </button>
+                {poolKeyCount > 1 ? (
+                  <span className="help" role="status" title={t("prov.keysCountTitle", { n: poolKeyCount })}>
+                    {t("prov.nKeys", { n: poolKeyCount })}
+                  </span>
+                ) : null}
+              </div>
             </Field>
           ) : null}
         </FormSection>
