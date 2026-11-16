@@ -324,6 +324,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       : null;
   const pairShown = pairEntries && pairEntries.length === 2 ? pairEntries : null;
 
+  // Azure OpenAI lives at the user's own resource: upstream labels its
+  // URL "Endpoint" with the portal hint, and requires it on save.
+  const azureId = editing === null ? preset?.id : typeof editing === "string" ? editing : undefined;
+  const isAzure = !!azureId && (azureId === "azure" || azureId.startsWith("azure-"));
+
   function switchPair(next: VendorPreset) {
     if (busy || !next || next.id === preset?.id) return;
     const used = new Set(providers.map((p) => p.id));
@@ -404,6 +409,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     }
     if (!id) {
       setMessage(t("prov.giveName"));
+      return null;
+    }
+    if (isAzure && !draft.baseUrl.trim()) {
+      setMessage(t("prov.endpointNeeded"));
+      document.getElementById("provider-url")?.focus();
       return null;
     }
 
@@ -839,10 +849,10 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                 <option value="gemini">{t("prov.protoGemini")}</option>
               </select>
             </Field>
-            <Field label={t("prov.fUrl")} htmlFor="provider-url"
-              help={t("prov.fUrlHelp")}>
-              <input id="provider-url" className="input mono" type="url" required
-                placeholder="https://api.example.com/v1"
+            <Field label={isAzure ? t("prov.fEndpoint") : t("prov.fUrl")} htmlFor="provider-url"
+              help={isAzure ? t("prov.azureEndpointHelp") : t("prov.fUrlHelp")}>
+              <input id="provider-url" className="input mono" type="url" required={!isAzure}
+                placeholder={isAzure && presetBase ? presetBase : "https://api.example.com/v1"}
                 value={draft.baseUrl} onChange={(e) => onBaseUrl(e.target.value)} />
             </Field>
           </div>
@@ -882,6 +892,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         </FormSection>
 
         <FormSection title={t("prov.secModels")} description={t("prov.secModelsDesc")}>
+          {isAzure ? <p className="help">{t("prov.azureModelsHint")}</p> : null}
           <Field label={t("prov.fModels")} htmlFor="provider-models" help={t("prov.fModelsHelp")}>
             <textarea id="provider-models" className="input mono" rows={4} placeholder={"deepseek-chat\ndeepseek-reasoner"}
               value={draft.models} onChange={(e) => set({ models: e.target.value })} />
