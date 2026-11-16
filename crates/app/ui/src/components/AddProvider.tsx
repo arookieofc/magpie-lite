@@ -122,7 +122,9 @@ export default function AddProvider({
   const tileTitle = (g: TileGroup) => {
     const lines = g.entries.map((pr) => {
       const where = g.entries.length > 1 ? `${pr.id.endsWith("-cn") ? t("add.china") : t("add.global")} ` : "";
-      const host = presetUrls(pr).map(hostOf).join(", ");
+      // A preset's own note says more than its host (Azure's
+      // YOUR-RESOURCE pattern), like upstream's tile tooltip.
+      const host = pr.note ?? presetUrls(pr).map(hostOf).join(", ");
       return `${where}${host}${isAdded(pr) ? ` · ${t("add.addedNote")}` : ""}`;
     });
     const head = g.entries[0].short ? `${g.entries[0].short} · ${g.entries[0].name}` : g.entries[0].name;
