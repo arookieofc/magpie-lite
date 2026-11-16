@@ -8,7 +8,7 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::{
     Affinity, Config, ConfigSnapshot, Protocol, ProviderCapabilities, ProviderConfig,
@@ -176,8 +176,26 @@ fn response(result: Result<ConfigSnapshot, ConfigError>, status: StatusCode) -> 
 /// GET `/config/presets` — the vendor catalog for the console's Add
 /// sheet: makers' own APIs, one-key relays and local servers, with
 /// the default base URL and protocol each tile prefills.
-pub async fn presets() -> Json<&'static [crate::presets::VendorPreset]> {
-    Json(crate::presets::VENDORS)
+/// The `icon` field names the vendored logo under `ui/public/icons`
+/// (`-color` files are full-color pictures, the rest are single-tone
+/// masks); `None` means the console falls back to an initial avatar.
+#[derive(Serialize)]
+pub struct VendorPresetView {
+    #[serde(flatten)]
+    pub preset: &'static crate::presets::VendorPreset,
+    pub icon: Option<&'static str>,
+}
+
+pub async fn presets() -> Json<Vec<VendorPresetView>> {
+    Json(
+        crate::presets::VENDORS
+            .iter()
+            .map(|preset| VendorPresetView {
+                preset,
+                icon: crate::presets::vendor_icon(preset.id),
+            })
+            .collect(),
+    )
 }
 pub async fn create(
     State(state): State<Arc<AppState>>,

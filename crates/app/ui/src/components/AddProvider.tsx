@@ -1,17 +1,13 @@
 import { useMemo, useState } from "react";
 import { Import, Plus, Search } from "lucide-react";
-import { Avatar, Card, Empty, Field } from "./ui";
+import { Card, Empty, Field } from "./ui";
+import VendorIcon, { hostOf } from "./vendorIcon";
 import { useT } from "../i18n";
 import type { ProviderConfig, VendorPreset } from "../types";
 
 export interface PastedEndpoint {
   baseUrl?: string;
   keys?: string;
-}
-
-function hostOf(url: string): string {
-  const bare = url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0];
-  return (bare.split(":")[0] || bare).toLowerCase();
 }
 
 // Pasted setup, mirroring upstream's pasteread: a URL and a key out of a
@@ -248,7 +244,11 @@ export default function AddProvider({
                       title={tileTitle(g)}
                       onClick={() => openTile(g)}
                     >
-                      <Avatar name={label} />
+                      <VendorIcon
+                        name={label}
+                        icon={g.entries.map((e) => e.icon).find(Boolean) ?? null}
+                        size="sm"
+                      />
                       <span className="nm">
                         <span className="n">{label}</span>
                         {added ? <span className="have" aria-hidden="true" /> : null}

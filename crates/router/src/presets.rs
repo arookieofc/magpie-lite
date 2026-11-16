@@ -232,6 +232,51 @@ pub struct VendorPreset {
     pub pair: Option<&'static str>,
 }
 
+/// The logo file served for a vendor id, vendored from the reference
+/// console's icon set (`-color` files are full-color pictures, the rest
+/// are single-tone marks). Vendors without a collected mark get `None`
+/// and the console falls back to an initial avatar.
+pub fn vendor_icon(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "openai" => "openai.svg",
+        "anthropic" => "anthropic.svg",
+        "gemini" => "gemini-color.svg",
+        "deepseek" => "deepseek-color.svg",
+        "moonshot" | "moonshot-cn" => "moonshot.svg",
+        "qwen" => "qwen-color.svg",
+        "zhipu" | "zhipu-cn" => "zhipu-color.svg",
+        "doubao" => "doubao-color.svg",
+        "minimax" | "minimax-cn" => "minimax-color.svg",
+        "baidu" => "baidu-color.svg",
+        "tencent" => "hunyuan-color.svg",
+        "xunfei" => "spark-color.svg",
+        "stepfun" => "stepfun-color.svg",
+        "yi" => "yi.svg",
+        "mistral" => "mistral-color.svg",
+        "xai" => "xai.svg",
+        "cohere" => "cohere-color.svg",
+        "perplexity" => "perplexity-color.svg",
+        "azure" => "azure-color.svg",
+        "groq" => "groq.svg",
+        "cerebras" => "cerebras.svg",
+        "sambanova" => "sambanova-color.svg",
+        "together" => "together-color.svg",
+        "fireworks" => "fireworks-color.svg",
+        "nvidia" => "nvidia-color.svg",
+        "github" => "github.svg",
+        "cline" => "cline.svg",
+        "openrouter" => "openrouter.svg",
+        "siliconflow" => "siliconcloud-color.svg",
+        "302ai" => "ai302-color.svg",
+        "aihubmix" => "aihubmix-color.svg",
+        "ollama" => "ollama.svg",
+        "lmstudio" => "lmstudio.svg",
+        "vllm" => "vllm-color.svg",
+        "xinference" => "xinference-color.svg",
+        _ => return None,
+    })
+}
+
 /// Every vendor the Add sheet offers. Only vendors whose endpoint
 /// shapes are certain belong here; entries with a per-customer host
 /// say so in `note`.

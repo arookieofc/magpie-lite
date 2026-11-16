@@ -266,6 +266,7 @@ export interface VendorPreset {
   gemini?: string;
   note?: string;
   pair?: string;
+  icon?: string | null;
 }
 
 export interface TraceResponse {

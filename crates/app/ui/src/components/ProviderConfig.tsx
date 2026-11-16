@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import * as api from "../api";
 import type { Config, ProviderConfig as Provider, VendorPreset } from "../types";
-import { Avatar, Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Segmented, Switch } from "./ui";
+import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Segmented, Switch } from "./ui";
+import VendorIcon, { hostOf, presetIconForHost } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import AddProvider, { type PastedEndpoint } from "./AddProvider";
 
@@ -55,11 +56,6 @@ function routingSummary(p: Provider, t: TFunc): string {
 // Row-list helpers, mirroring upstream's providers view: one row per
 // provider (logo, name + badges, host and model count, key pill, chevron),
 // with the full editor expanding under the selected row.
-function hostOf(url: string): string {
-  const bare = url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0];
-  return bare || url;
-}
-
 function modelsLabel(p: Provider, t: TFunc): string {
   const n = (p.models ?? []).length;
   if (n === 1) return t("prov.oneModel");
@@ -784,7 +780,10 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                         aria-label={t("prov.editAria", { id: p.id })}
                         onClick={() => (open ? close() : openEdit(p))}
                       >
-                        <Avatar name={p.name || p.id} />
+                        <VendorIcon
+                          name={p.name || p.id}
+                          icon={presetIconForHost(presets, hostOf(p.base_url))}
+                        />
                         <span className="pv-who">
                           <span className="pv-name">
                             <span className="pv-nm">{p.name || p.id}</span>

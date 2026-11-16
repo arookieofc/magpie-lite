@@ -457,6 +457,20 @@ button:disabled { cursor: not-allowed; }
 .avatar.sm { width: 22px; height: 22px; border-radius: 6px; font-size: 9.5px; }
 .avatar.lg { width: 36px; height: 36px; border-radius: 10px; font-size: 13px; }
 
+/* Vendor logos: `-color` files render directly, single-tone marks use a
+   theme-aware mask so they stay legible in dark and light modes. */
+.vicon { display: inline-grid; place-items: center; flex: none; width: 30px; height: 30px; }
+.vicon.sm { width: 22px; height: 22px; }
+.vicon.lg { width: 36px; height: 36px; }
+.vicon-img { width: 100%; height: 100%; border-radius: 6px; object-fit: contain; }
+.vicon-mask {
+  width: 72%; height: 72%;
+  background: var(--text-2);
+  mask-size: contain; mask-repeat: no-repeat; mask-position: center;
+  -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center;
+}
+.vicon-probe { width: 1px; height: 1px; opacity: 0; position: absolute; pointer-events: none; }
+
 .card {
   min-width: 0;
   background: var(--surface);
