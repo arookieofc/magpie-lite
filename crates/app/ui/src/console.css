@@ -1316,6 +1316,7 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
 }
 .editor-head h3 { font-size: 13.5px; font-weight: 650; letter-spacing: -.005em; }
 .editor-head .sub { font-size: 12px; color: var(--muted); }
+.editor-head .note { font-size: 12px; color: var(--muted); }
 .editor-foot {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 12px 20px;

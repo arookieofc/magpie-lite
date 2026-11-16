@@ -232,6 +232,9 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   const [adding, setAdding] = useState(false);
   const [presets, setPresets] = useState<VendorPreset[] | null>(null);
   const [customMode, setCustomMode] = useState(false);
+  // Which vendor tile spawned the new draft, so the editor head shows
+  // its icon and name like upstream's `editing={preset}` state.
+  const [preset, setPreset] = useState<VendorPreset | null>(null);
   const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
   const booted = useRef(false);
   useEffect(() => {
@@ -271,6 +274,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     setAdding(false);
     setEditing(null);
     setCustomMode(true);
+    setPreset(null);
     setCustomUrls({});
     const draft = blankDraft(providers.length === 0);
     if (prefill?.baseUrl) draft.baseUrl = prefill.baseUrl;
@@ -291,6 +295,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     setAdding(false);
     setEditing(null);
     setCustomMode(false);
+    setPreset(pr);
     setDraft({
       ...blankDraft(providers.length === 0),
       id,
@@ -308,6 +313,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     setAdding(false);
     setEditing(p.id);
     setCustomMode(false);
+    setPreset(null);
     setDraft(draftFrom(p, config?.default_provider === p.id));
     setMessage("");
     setDiscovered([]);
@@ -316,6 +322,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   function close() {
     setEditing(false);
     setCustomMode(false);
+    setPreset(null);
     setMessage("");
   }
 
@@ -673,7 +680,15 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   const editorForm = (
     <form className="editor" onSubmit={save} autoComplete="off">
       <div className="editor-head">
-        <h3>{editing === null ? t("prov.new") : t("prov.editTitle", { name: draft.name || draft.id })}</h3>
+        {editing === null && preset ? (
+          <>
+            <VendorIcon name={preset.name} icon={preset.icon ?? null} size="sm" />
+            <h3>{preset.name}</h3>
+            {preset.note ? <span className="note">{preset.note}</span> : null}
+          </>
+        ) : (
+          <h3>{editing === null ? t("prov.new") : t("prov.editTitle", { name: draft.name || draft.id })}</h3>
+        )}
         {editing !== null ? <span className="sub"><code>{draft.id}</code></span> : null}
       </div>
       <div className="editor-body">
