@@ -154,6 +154,48 @@ impl Store {
         )?;
         Ok(())
     }
+
+    /// Read the conversation-affinity snapshot: when it was written and the
+    /// sticks as JSON. Absent or damaged means no snapshot — the caller
+    /// carries on with memory only, like a missing `affinity.json`.
+    pub fn get_affinity_snapshot(&self) -> anyhow::Result<Option<(i64, serde_json::Value)>> {
+        let (updated, body) = match (self.kv_get("affinity_updated_ms")?, self.kv_get("affinity")?) {
+            (Some(updated), Some(body)) => (updated, body),
+            _ => return Ok(None),
+        };
+        let Ok(updated) = updated.parse::<i64>() else {
+            return Ok(None);
+        };
+        let Ok(body) = serde_json::from_str::<serde_json::Value>(&body) else {
+            return Ok(None);
+        };
+        Ok(Some((updated, body)))
+    }
+
+    /// Replace the conversation-affinity snapshot atomically: the sticks
+    /// and their write time land in one transaction, so another process
+    /// never reads a new time with an old snapshot or the reverse.
+    pub fn set_affinity_snapshot(
+        &self,
+        updated_ms: i64,
+        body: &serde_json::Value,
+    ) -> anyhow::Result<()> {
+        let body = serde_json::to_string(body)?;
+        let mut conn = self.conn.lock().map_err(|_| anyhow::anyhow!("store lock poisoned"))?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO kv(k, v) VALUES ('affinity', ?1)
+             ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+            params![body],
+        )?;
+        tx.execute(
+            "INSERT INTO kv(k, v) VALUES ('affinity_updated_ms', ?1)
+             ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+            params![updated_ms.to_string()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -226,5 +268,21 @@ mod tests {
             default_db_path(Path::new("/tmp/magpie-lite/config.toml")),
             PathBuf::from("/tmp/magpie-lite/magpie.db")
         );
+    }
+
+    #[test]
+    fn affinity_snapshot_round_trip() {
+        let path = temp_db("affinity");
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.get_affinity_snapshot().unwrap(), None);
+        let blob = serde_json::json!({"scope|conv": {"who": "acme#1", "at": 42}});
+        store.set_affinity_snapshot(4242, &blob).unwrap();
+        let (updated, back) = store.get_affinity_snapshot().unwrap().unwrap();
+        assert_eq!(updated, 4242);
+        assert_eq!(back, blob);
+        // A damaged time or body reads as no snapshot, never an error.
+        store.kv_set("affinity_updated_ms", "not-a-number").unwrap();
+        assert_eq!(store.get_affinity_snapshot().unwrap(), None);
+        let _ = std::fs::remove_file(&path);
     }
 }

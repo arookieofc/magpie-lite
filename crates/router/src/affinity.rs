@@ -23,6 +23,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use http::HeaderMap;
 use magpie_core::ir::{CompletionRequest, PartKind, Role};
+use magpie_store::Store;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -240,19 +241,78 @@ struct State {
     /// includes them, so a burst of new conversations spreads rather than all
     /// going to the one holding the fewest a moment before.
     opening: HashMap<String, Stick>,
-    /// The file as last read or written: another magpie's writes (the one
-    /// handing over to this one) are read again when a conversation is missed.
-    from: Option<PathBuf>,
-    read_ms: Option<u64>,
+    /// The snapshot version as last read or written: another magpie's writes
+    /// (the one handing over to this one) are read again when a conversation
+    /// is missed. A file's mtime, or the database row's write time.
+    seen_ms: Option<u64>,
 }
 
 /// Who answered which conversation, kept in process and on disk.
 pub struct AffinityStore {
-    path: Option<PathBuf>,
+    sink: Option<Sink>,
     state: Arc<Mutex<State>>,
     /// The write-behind signal: an answer marks the file dirty and wakes
     /// the writer, which takes a copy within [`WRITE_BEHIND`].
     writer: Option<Arc<(Mutex<Writer>, Condvar)>>,
+}
+
+/// Where the snapshot lives: the `affinity.json` file beside the config,
+/// or the embedded SQLite database.
+#[derive(Clone)]
+enum Sink {
+    File(PathBuf),
+    Db(Arc<Store>),
+}
+
+impl Sink {
+    /// Read the snapshot and its version. Absent or damaged reads as
+    /// nothing — the caller carries on with memory only.
+    fn load(&self) -> Option<(u64, HashMap<String, SavedStick>)> {
+        match self {
+            Sink::File(path) => {
+                let meta = std::fs::metadata(path).ok()?;
+                let version = meta
+                    .modified()
+                    .ok()?
+                    .duration_since(UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_millis().min(u64::MAX as u128) as u64)?;
+                let bytes = std::fs::read(path).ok()?;
+                let saved = serde_json::from_slice::<HashMap<String, SavedStick>>(&bytes).ok()?;
+                Some((version, saved))
+            }
+            Sink::Db(store) => {
+                let (version, body) = store.get_affinity_snapshot().ok()??;
+                let saved =
+                    serde_json::from_value::<HashMap<String, SavedStick>>(body).ok()?;
+                Some((version as u64, saved))
+            }
+        }
+    }
+
+    /// Replace the snapshot, returning its new version. Failures are
+    /// swallowed: affinity is routing advice, never worth failing a
+    /// request over.
+    fn save(&self, out: &HashMap<String, SavedStick>) -> Option<u64> {
+        match self {
+            Sink::File(path) => {
+                write_sticks(path, out);
+                std::fs::metadata(path)
+                    .ok()?
+                    .modified()
+                    .ok()?
+                    .duration_since(UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_millis().min(u64::MAX as u128) as u64)
+            }
+            Sink::Db(store) => {
+                let version = now_ms();
+                let body = serde_json::to_value(out).ok()?;
+                store.set_affinity_snapshot(version as i64, &body).ok()?;
+                Some(version)
+            }
+        }
+    }
 }
 
 /// The write-behind state: whether an answer is waiting, and whether the
@@ -276,11 +336,20 @@ impl AffinityStore {
     pub fn new(path: Option<PathBuf>) -> Self {
         let Some(path) = path else {
             return Self {
-                path: None,
+                sink: None,
                 state: Arc::new(Mutex::new(State::default())),
                 writer: None,
             };
         };
+        Self::open_sink(Sink::File(path))
+    }
+
+    /// A store persisting to the embedded SQLite database.
+    pub fn open_db(store: Arc<Store>) -> Self {
+        Self::open_sink(Sink::Db(store))
+    }
+
+    fn open_sink(sink: Sink) -> Self {
         let state = Arc::new(Mutex::new(State::default()));
         let writer = Arc::new((
             Mutex::new(Writer {
@@ -291,11 +360,11 @@ impl AffinityStore {
             Condvar::new(),
         ));
         let worker_state = Arc::clone(&state);
-        let worker_path = path.clone();
+        let worker_sink = sink.clone();
         let worker_writer = Arc::clone(&writer);
-        std::thread::spawn(move || writer_loop(worker_path, worker_state, worker_writer));
+        std::thread::spawn(move || writer_loop(worker_sink, worker_state, worker_writer));
         Self {
-            path: Some(path),
+            sink: Some(sink),
             state,
             writer: Some(writer),
         }
@@ -315,30 +384,16 @@ impl AffinityStore {
     /// Read the file again when it changed since: after a restart, or written
     /// by the magpie that handed over.
     fn reread(&self, state: &mut State) {
-        let Some(path) = &self.path else {
+        let Some(sink) = &self.sink else {
             return;
         };
-        let Ok(meta) = std::fs::metadata(path) else {
+        let Some((version, saved)) = sink.load() else {
             return;
         };
-        let Ok(modified) = meta.modified() else {
-            return;
-        };
-        let read_ms = modified
-            .duration_since(UNIX_EPOCH)
-            .ok()
-            .map(|d| d.as_millis().min(u64::MAX as u128) as u64);
-        if state.from.as_deref() == Some(path.as_path()) && state.read_ms == read_ms {
+        if state.seen_ms == Some(version) {
             return;
         }
-        state.from = Some(path.clone());
-        state.read_ms = read_ms;
-        let Ok(bytes) = std::fs::read(path) else {
-            return;
-        };
-        let Ok(saved) = serde_json::from_slice::<HashMap<String, SavedStick>>(&bytes) else {
-            return;
-        };
+        state.seen_ms = Some(version);
         let now = now_ms();
         for (key, value) in saved {
             if value.who.is_empty() || now.saturating_sub(value.at) > millis(STICK_KEEP) {
@@ -499,7 +554,7 @@ fn write_sticks(path: &Path, out: &HashMap<String, SavedStick>) {
 
 /// Wait for answers to write, write them once [`WRITE_BEHIND`] has passed,
 /// and write the last of them as the store ends.
-fn writer_loop(path: PathBuf, answers: Arc<Mutex<State>>, writer: Arc<(Mutex<Writer>, Condvar)>) {
+fn writer_loop(sink: Sink, answers: Arc<Mutex<State>>, writer: Arc<(Mutex<Writer>, Condvar)>) {
     let (lock, wake) = &*writer;
     loop {
         let mut state = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -512,7 +567,7 @@ fn writer_loop(path: PathBuf, answers: Arc<Mutex<State>>, writer: Arc<(Mutex<Wri
         state.dirty = false;
         drop(state);
         if stopping {
-            save_sticks(&path, &answers);
+            save_sticks(&sink, &answers);
             finish(writer);
             return;
         }
@@ -531,7 +586,7 @@ fn writer_loop(path: PathBuf, answers: Arc<Mutex<State>>, writer: Arc<(Mutex<Wri
         let stopping = state.stopping;
         state.dirty = false;
         drop(state);
-        save_sticks(&path, &answers);
+        save_sticks(&sink, &answers);
         if stopping {
             finish(writer);
             return;
@@ -539,28 +594,21 @@ fn writer_loop(path: PathBuf, answers: Arc<Mutex<State>>, writer: Arc<(Mutex<Wri
     }
 }
 
-/// Take the latest answerers out of `answers` and write them to `path`,
-/// noting in `answers` that this store wrote it so it isn't read back as
-/// another's.
-fn save_sticks(path: &Path, answers: &Mutex<State>) {
+/// Take the latest answerers out of `answers` and write them to the sink,
+/// noting in `answers` that this store wrote them so they aren't read back
+/// as another's.
+fn save_sticks(sink: &Sink, answers: &Mutex<State>) {
     let out = {
         let state = answers
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         snapshot(&state)
     };
-    write_sticks(path, &out);
-    if let Ok(meta) = std::fs::metadata(path)
-        && let Ok(modified) = meta.modified()
-    {
+    if let Some(version) = sink.save(&out) {
         let mut state = answers
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.from = Some(path.to_owned());
-        state.read_ms = modified
-            .duration_since(UNIX_EPOCH)
-            .ok()
-            .map(|d| d.as_millis().min(u64::MAX as u128) as u64);
+        state.seen_ms = Some(version);
     }
 }
 
@@ -1064,6 +1112,26 @@ mod tests {
         };
         assert!(path.exists());
         let reopened = AffinityStore::new(Some(path));
+        let decision = affine(Affinity::Auto, false, &seats, &reopened);
+        assert_eq!(decision.key, first);
+        assert_eq!(decision.trace.why, "cache");
+        assert_eq!(decision.first, Some((1, 1)));
+    }
+
+    #[test]
+    fn a_stick_survives_a_restart_in_the_database() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = directory.path().join("magpie.db");
+        let seats = vec![seat("mock#a", "model", 0, 0), seat("mock#b", "model", 1, 1)];
+        let first = {
+            let shared = Arc::new(Store::open(&db).unwrap());
+            let store = AffinityStore::open_db(Arc::clone(&shared));
+            let decision = affine(Affinity::Auto, true, &seats, &store);
+            store.answered(&decision.key, "mock#b", "model", 1, 4096);
+            store.flush();
+            decision.key
+        };
+        let reopened = AffinityStore::open_db(Arc::new(Store::open(&db).unwrap()));
         let decision = affine(Affinity::Auto, false, &seats, &reopened);
         assert_eq!(decision.key, first);
         assert_eq!(decision.trace.why, "cache");

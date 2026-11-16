@@ -328,7 +328,7 @@ pub struct RequestLog {
     sink: Option<File>,
     /// Embedded history database. `None` when the log is memory-only or
     /// backed by a JSONL file.
-    store: Option<Store>,
+    store: Option<Arc<Store>>,
     /// Monotonic counter bumped on every finished request, for the
     /// `/api/trace` long-poll: a page asks for what changed `after` its
     /// last seq. Process-local; a restarted log starts at 0 and the
@@ -400,6 +400,12 @@ impl RequestLog {
     /// tolerance as [`RequestLog::open`].
     pub fn open_db(path: &Path) -> anyhow::Result<Self> {
         let store = Store::open(path)?;
+        Self::open_with_store(Arc::new(store))
+    }
+
+    /// Open the recent window from an already-open database, so the
+    /// request log and other state can share one connection pool entry.
+    pub fn open_with_store(store: Arc<Store>) -> anyhow::Result<Self> {
         let recent = store.load_recent(RECENT_LIMIT)?;
         let mut log = Self {
             store: Some(store),

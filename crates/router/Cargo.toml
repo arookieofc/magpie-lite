@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 magpie-core = { path = "../core" }
+magpie-store = { path = "../store" }
 anyhow.workspace = true
 async-stream.workspace = true
 dirs.workspace = true

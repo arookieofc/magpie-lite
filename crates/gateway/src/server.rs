@@ -140,21 +140,14 @@ pub async fn serve(config: Config, port: Option<u16>) -> anyhow::Result<()> {
 fn open_request_log(
     history_path: Option<&std::path::PathBuf>,
     config: &Config,
-    agent_config: &std::path::Path,
+    shared_store: Option<std::sync::Arc<magpie_store::Store>>,
 ) -> anyhow::Result<RequestLog> {
     if let Some(path) = history_path.or(config.history_path.as_ref()) {
         return RequestLog::open(path);
     }
-    let db_path = magpie_store::default_db_path(agent_config);
-    match RequestLog::open_db(&db_path) {
-        Ok(log) => Ok(log),
-        Err(error) => {
-            tracing::warn!(
-                "history database {} unavailable ({error:#}); recent history is memory-only",
-                db_path.display()
-            );
-            Ok(RequestLog::default())
-        }
+    match shared_store {
+        Some(store) => RequestLog::open_with_store(store),
+        None => Ok(RequestLog::default()),
     }
 }
 
@@ -175,17 +168,34 @@ pub async fn serve_with_config_path(
         Some(path) => path.clone(),
         None => crate::config::config_path()?,
     };
+    // One embedded database serves request history and conversation
+    // affinity together. A broken database never blocks startup: history
+    // runs memory-only and affinity falls back to its JSON file.
+    let db_path = magpie_store::default_db_path(&agent_config);
+    let shared_store = match magpie_store::Store::open(&db_path) {
+        Ok(store) => Some(std::sync::Arc::new(store)),
+        Err(error) => {
+            tracing::warn!(
+                "SQLite store {} unavailable ({error:#}); request history is memory-only for this run",
+                db_path.display()
+            );
+            None
+        }
+    };
     let requests = Arc::new(Mutex::new(open_request_log(
         history_path.as_ref(),
         &config,
-        &agent_config,
+        shared_store.clone(),
     )?));
     let agent_state_dir = magpie_agents::lifecycle::state_directory(&agent_config)?;
     retired_store::init(agent_state_dir.join("retired.json"));
     let manager = magpie_agents::lifecycle::Manager::native(agent_state_dir.clone())?;
     // Persist affinity beside the resolved config even when the embedded
     // caller supplied no path and the default config location is in use.
-    let affinity = AffinityStore::beside(Some(agent_config.as_path()));
+    let affinity = match shared_store {
+        Some(store) => AffinityStore::open_db(store),
+        None => AffinityStore::beside(Some(agent_config.as_path())),
+    };
     let state = Arc::new(AppState {
         agents: Some(crate::agents::AgentService {
             manager: Arc::new(manager),
@@ -236,15 +246,34 @@ pub async fn serve_on_listener(
         Some(path) => path.clone(),
         None => crate::config::config_path()?,
     };
+    // One embedded database serves request history and conversation
+    // affinity together. A broken database never blocks startup: history
+    // runs memory-only and affinity falls back to its JSON file.
+    let db_path = magpie_store::default_db_path(&agent_config);
+    let shared_store = match magpie_store::Store::open(&db_path) {
+        Ok(store) => Some(std::sync::Arc::new(store)),
+        Err(error) => {
+            tracing::warn!(
+                "SQLite store {} unavailable ({error:#}); request history is memory-only for this run",
+                db_path.display()
+            );
+            None
+        }
+    };
     let requests = Arc::new(Mutex::new(open_request_log(
         history_path.as_ref(),
         &config,
-        &agent_config,
+        shared_store.clone(),
     )?));
     let agent_state_dir = magpie_agents::lifecycle::state_directory(&agent_config)?;
     retired_store::init(agent_state_dir.join("retired.json"));
     let manager = magpie_agents::lifecycle::Manager::native(agent_state_dir.clone())?;
-    let affinity = AffinityStore::beside(Some(agent_config.as_path()));
+    // Persist affinity beside the resolved config even when the embedded
+    // caller supplied no path and the default config location is in use.
+    let affinity = match shared_store {
+        Some(store) => AffinityStore::open_db(store),
+        None => AffinityStore::beside(Some(agent_config.as_path())),
+    };
     let state = Arc::new(AppState {
         agents: Some(crate::agents::AgentService {
             manager: Arc::new(manager),
