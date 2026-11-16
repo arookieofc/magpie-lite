@@ -4,7 +4,7 @@ import { Field, Notice } from "./ui";
 import VendorIcon from "./vendorIcon";
 import { useT } from "../i18n";
 import type { VendorPreset } from "../types";
-import { splitKeys } from "../util";
+import { curlFill, splitKeys } from "../util";
 
 export interface CustomDraft {
   name: string;
@@ -31,6 +31,7 @@ interface Props {
   onIconFile: (data: string) => void;
   onCancel: () => void;
   onSave: (e: FormEvent) => void;
+  onNote: (message: string) => void;
   advanced: ReactNode;
 }
 
@@ -62,6 +63,7 @@ export default function CustomProvider({
   onIconFile,
   onCancel,
   onSave,
+  onNote,
   advanced,
 }: Props) {
   const t = useT();
@@ -75,6 +77,33 @@ export default function CustomProvider({
 
   // Many keys pasted at once: the count, like upstream's key-count hint.
   const keyCount = splitKeys(draft.keys).length;
+
+  // A pasted curl command fills the form, like upstream: the request
+  // URL becomes the base URL, an auth header the key, -d's model the
+  // probe model.
+  const onPasteCurl = (e: React.ClipboardEvent): boolean => {
+    const fill = curlFill(e.clipboardData?.getData("text") ?? "");
+    if (!fill) return false;
+    e.preventDefault();
+    const took: string[] = [];
+    const patch: Partial<CustomDraft> = {};
+    if (fill.baseUrl) {
+      patch.baseUrl = fill.baseUrl;
+      took.push(t("prov.fUrl"));
+    }
+    if (fill.key) {
+      patch.keys = fill.key;
+      took.push(t("prov.keysLabel"));
+    }
+    if (fill.model && !draft.testModel) {
+      patch.testModel = fill.model;
+      took.push(t("prov.fTestModel"));
+    }
+    set(patch);
+    if (took.length) onNote(t("prov.curlFilled", { what: took.join(" · ") }));
+    if (!fill.key) document.getElementById("cst-key")?.focus();
+    return true;
+  };
 
   const icons = useMemo(() => {
     const names = new Set<string>();
@@ -149,6 +178,7 @@ export default function CustomProvider({
             className="input mono"
             value={draft.baseUrl}
             onChange={(e) => set({ baseUrl: e.target.value })}
+            onPaste={onPasteCurl}
             placeholder={urlHint(draft.protocol)}
             inputMode="url"
             aria-label="Base URL"
@@ -181,6 +211,7 @@ export default function CustomProvider({
             value={draft.keys}
             onChange={(e) => set({ keys: e.target.value })}
             onPaste={(e) => {
+              if (onPasteCurl(e)) return;
               const keys = splitKeys(e.clipboardData?.getData("text") ?? "");
               if (keys.length < 2) return;
               e.preventDefault();

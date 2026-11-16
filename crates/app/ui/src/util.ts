@@ -99,16 +99,18 @@ export function withOriginUrl(url: string, origin: string): string {
 export interface CurlFill {
   baseUrl: string;
   key: string;
+  model: string;
 }
 
 // A pasted curl command fills the form, mirroring upstream's fromCurl:
 // the request URL gives the base URL (request path stripped), an auth
-// header the key. Placeholders and variable references are never keys.
+// header the key, and -d's model the probe model. Placeholders and
+// variable references are never keys.
 export function curlFill(text: string): CurlFill | null {
   const raw = String(text);
   if (!/(^|\s|[;&|])curl(\s|$)/i.test(raw)) return null;
   const flat = raw.replace(/\\\r?\n/g, " ");
-  const out: CurlFill = { baseUrl: "", key: "" };
+  const out: CurlFill = { baseUrl: "", key: "", model: "" };
   const urlAt = flat.search(/--url\s+|(?:^|\s)(?:-X\s+\w+\s+)?https?:\/\//i);
   if (urlAt >= 0) {
     const slice = flat.slice(urlAt).replace(/^--url\s+/i, "").trim();
@@ -143,6 +145,8 @@ export function curlFill(text: string): CurlFill | null {
     const bad = /^(<.*>|[{}$%].*|.*[{}$%<>].*|your[-_].*|.*your[-_].*|xxx+|\*+|test|example|change-?me|replace-?me|insert[-_].*|sk-your.*|key[-_]?here)$/i;
     if (k && !bad.test(k)) out.key = k;
   }
-  if (!out.baseUrl && !out.key) return null;
+  const mm = flat.match(/["']model["']\s*:\s*["']([^"'\\]+)["']/);
+  if (mm) out.model = mm[1];
+  if (!out.baseUrl && !out.key && !out.model) return null;
   return out;
 }

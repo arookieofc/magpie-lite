@@ -725,6 +725,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       onIconFile={(data) => fetchIcon("", { data })}
       onCancel={close}
       onSave={save}
+      onNote={setMessage}
       advanced={customAdvanced}
     />
   );
@@ -779,10 +780,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     set(patch);
   };
   // A pasted curl command fills the form, like upstream: the request
-  // URL becomes the base URL, an auth header the key.
-  const onPasteCurl = (e: React.ClipboardEvent) => {
+  // URL becomes the base URL, an auth header the key, -d's model the
+  // probe model.
+  const onPasteCurl = (e: React.ClipboardEvent): boolean => {
     const fill = curlFill(e.clipboardData?.getData("text") ?? "");
-    if (!fill) return;
+    if (!fill) return false;
     e.preventDefault();
     const took: string[] = [];
     const patch: Partial<Draft> = {};
@@ -797,9 +799,14 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       patch.keys = fill.key;
       took.push(t("prov.keysLabel"));
     }
+    if (fill.model && !draft.testModel) {
+      patch.testModel = fill.model;
+      took.push(t("prov.fTestModel"));
+    }
     set(patch);
     if (took.length) setMessage(t("prov.curlFilled", { what: took.join(" · ") }));
     if (!fill.key) document.getElementById("provider-keys")?.focus();
+    return true;
   };
   const editorForm = (
     <form className="editor" onSubmit={save} autoComplete="off">
