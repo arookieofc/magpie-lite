@@ -17,7 +17,7 @@ import VendorIcon, { hostOf, presetIconForHost } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import AddProvider, { type PastedEndpoint } from "./AddProvider";
 import CustomProvider from "./CustomProvider";
-import { originOfUrl, splitKeys, withOriginUrl } from "../util";
+import { curlFill, originOfUrl, splitKeys, withOriginUrl } from "../util";
 
 function policyLabel(v: string, t: TFunc): string {
   switch (v) {
@@ -778,6 +778,29 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     }
     set(patch);
   };
+  // A pasted curl command fills the form, like upstream: the request
+  // URL becomes the base URL, an auth header the key.
+  const onPasteCurl = (e: React.ClipboardEvent) => {
+    const fill = curlFill(e.clipboardData?.getData("text") ?? "");
+    if (!fill) return;
+    e.preventDefault();
+    const took: string[] = [];
+    const patch: Partial<Draft> = {};
+    if (fill.baseUrl) {
+      patch.baseUrl = fill.baseUrl;
+      const o = originOfUrl(fill.baseUrl);
+      if (showServerAddress && o) patch.serverAddress = o;
+      took.push(t("prov.fUrl"));
+    }
+    if (fill.key) {
+      if (draft.keyMode !== "replace") patch.keyMode = "replace";
+      patch.keys = fill.key;
+      took.push(t("prov.keysLabel"));
+    }
+    set(patch);
+    if (took.length) setMessage(t("prov.curlFilled", { what: took.join(" · ") }));
+    if (!fill.key) document.getElementById("provider-keys")?.focus();
+  };
   const editorForm = (
     <form className="editor" onSubmit={save} autoComplete="off">
       <div className="editor-head">
@@ -856,7 +879,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
               help={isAzure ? t("prov.azureEndpointHelp") : t("prov.fUrlHelp")}>
               <input id="provider-url" className="input mono" type="url" required={!isAzure}
                 placeholder={isAzure && presetBase ? presetBase : "https://api.example.com/v1"}
-                value={draft.baseUrl} onChange={(e) => onBaseUrl(e.target.value)} />
+                value={draft.baseUrl} onChange={(e) => onBaseUrl(e.target.value)} onPaste={onPasteCurl} />
             </Field>
           </div>
           <fieldset className="choice-field">
@@ -948,7 +971,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           {showKeys ? (
             <Field label={t("prov.newKeys")} htmlFor="provider-keys" help={t("prov.newKeysHelp")}>
               <textarea id="provider-keys" className={`input mono${showPoolKeys ? "" : " secret"}`} rows={3} autoComplete="off" spellCheck={false}
-                value={draft.keys} onChange={(e) => set({ keys: e.target.value })} />
+                value={draft.keys} onChange={(e) => set({ keys: e.target.value })} onPaste={onPasteCurl} />
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <button type="button" className="link" onClick={() => setShowPoolKeys((v) => !v)}>
                   {showPoolKeys ? t("prov.hide") : t("prov.show")}

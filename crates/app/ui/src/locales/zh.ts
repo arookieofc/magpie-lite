@@ -336,6 +336,7 @@ export const zh = {
   "prov.azureEndpointHelp": "资源的接口地址，见 Azure 门户的「密钥和终结点」。部署名称就是模型 ID。",
   "prov.azureModelsHint": "Azure 的部署即模型：把部署名称当作模型 ID 填写，也可用「获取模型」拉取。",
   "prov.endpointNeeded": "需要填写你的资源接口地址",
+  "prov.curlFilled": "已从粘贴的 curl 命令填入：{what}。",
   "prov.serverAddress": "服务器地址",
   "prov.serverAddressHelp": "服务监听的地址；改端口，或换成局域网里另一台机器的地址。",
   "prov.caps": "支持的协议",

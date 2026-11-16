@@ -336,6 +336,7 @@ export const en = {
   "prov.azureEndpointHelp": "Your resource's endpoint, from Keys and Endpoint in the Azure portal. The deployments' names are the model ids.",
   "prov.azureModelsHint": "Deployments are the models: type a deployment name as the model ID, or fetch them with Fetch models.",
   "prov.endpointNeeded": "Your resource's endpoint is needed",
+  "prov.curlFilled": "Filled in from the pasted curl command: {what}.",
   "prov.serverAddress": "Server address",
   "prov.serverAddressHelp": "Where the server listens; change the port, or give another computer's address.",
   "prov.caps": "Supported protocols",

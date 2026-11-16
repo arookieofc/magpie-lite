@@ -95,3 +95,54 @@ export function withOriginUrl(url: string, origin: string): string {
     return url;
   }
 }
+
+export interface CurlFill {
+  baseUrl: string;
+  key: string;
+}
+
+// A pasted curl command fills the form, mirroring upstream's fromCurl:
+// the request URL gives the base URL (request path stripped), an auth
+// header the key. Placeholders and variable references are never keys.
+export function curlFill(text: string): CurlFill | null {
+  const raw = String(text);
+  if (!/(^|\s|[;&|])curl(\s|$)/i.test(raw)) return null;
+  const flat = raw.replace(/\\\r?\n/g, " ");
+  const out: CurlFill = { baseUrl: "", key: "" };
+  const urlAt = flat.search(/--url\s+|(?:^|\s)(?:-X\s+\w+\s+)?https?:\/\//i);
+  if (urlAt >= 0) {
+    const slice = flat.slice(urlAt).replace(/^--url\s+/i, "").trim();
+    const m = slice.match(/https?:\/\/[^\s'"<>\\]+/i);
+    if (m) {
+      let u = m[0].replace(/[),;]+$/, "");
+      try {
+        const parsed = new URL(u);
+        const cut = ["/chat/completions", "/messages", "/responses"];
+        let path = parsed.pathname;
+        for (const tail of cut) {
+          if (path.toLowerCase().endsWith(tail)) {
+            path = path.slice(0, -tail.length);
+            break;
+          }
+        }
+        const mi = path.toLowerCase().indexOf("/models/");
+        if (mi >= 0) path = path.slice(0, mi);
+        const oi = path.toLowerCase().indexOf("/openai/deployments");
+        if (oi >= 0) path = path.slice(0, oi);
+        if (path.length > 1) path = path.replace(/\/+$/, "");
+        out.baseUrl = parsed.origin + (path === "/" ? "" : path);
+      } catch {
+        out.baseUrl = "";
+      }
+    }
+  }
+  const hm = flat.match(/authorization\s*:\s*bearer\s+([^\s'"<>;|&\\]+)/i) ||
+    flat.match(/(?:x-api-key|api-key)\s*:\s*([^\s'"<>;|&\\]+)/i);
+  if (hm) {
+    const k = hm[1].replace(/[,)]+$/, "");
+    const bad = /^(<.*>|[{}$%].*|.*[{}$%<>].*|your[-_].*|.*your[-_].*|xxx+|\*+|test|example|change-?me|replace-?me|insert[-_].*|sk-your.*|key[-_]?here)$/i;
+    if (k && !bad.test(k)) out.key = k;
+  }
+  if (!out.baseUrl && !out.key) return null;
+  return out;
+}
