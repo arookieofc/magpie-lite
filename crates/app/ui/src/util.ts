@@ -62,3 +62,36 @@ export function splitKeys(text: string): string[] {
   }
   return out;
 }
+
+// Origin helpers mirroring upstream's local-provider "Server address":
+// one box moving every URL's origin while keeping its path. With a
+// single base URL the same edit rewrites just its origin.
+const withScheme = (s: string) =>
+  /^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `http://${s}`;
+
+export function originOfUrl(value: string): string {
+  const s = String(value).trim();
+  if (!s) return "";
+  try {
+    const u = new URL(withScheme(s));
+    return u.origin === "null" ? "" : u.origin;
+  } catch {
+    return "";
+  }
+}
+
+export function withOriginUrl(url: string, origin: string): string {
+  const o = String(origin).trim().replace(/\/+$/, "");
+  if (!o) return url;
+  try {
+    const base = String(url).trim() || "http://localhost/";
+    const u = new URL(withScheme(base));
+    const nu = new URL(withScheme(o));
+    u.protocol = nu.protocol;
+    u.hostname = nu.hostname;
+    u.port = nu.port;
+    return u.toString();
+  } catch {
+    return url;
+  }
+}

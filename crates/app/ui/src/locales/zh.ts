@@ -332,6 +332,8 @@ export const zh = {
   "prov.protoGemini": "Google Gemini",
   "prov.fUrl": "Base URL",
   "prov.fUrlHelp": "Chat 与 Responses 请带 /v1；Anthropic 填 host 根；Gemini 带 /v1beta。",
+  "prov.serverAddress": "服务器地址",
+  "prov.serverAddressHelp": "服务监听的地址；改端口，或换成局域网里另一台机器的地址。",
   "prov.caps": "支持的协议",
   "prov.capsHelp": "勾选该提供商接受的所有线协议；已配置的协议会自动包含。",
   "prov.capStreaming": "流式",

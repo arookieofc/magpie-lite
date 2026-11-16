@@ -332,6 +332,8 @@ export const en = {
   "prov.protoGemini": "Google Gemini",
   "prov.fUrl": "Base URL",
   "prov.fUrlHelp": "Chat and Responses: include /v1. Anthropic: host root. Gemini: include /v1beta.",
+  "prov.serverAddress": "Server address",
+  "prov.serverAddressHelp": "Where the server listens; change the port, or give another computer's address.",
   "prov.caps": "Supported protocols",
   "prov.capsHelp": "Select every wire protocol this provider accepts. The configured protocol is included automatically.",
   "prov.capStreaming": "Streaming",

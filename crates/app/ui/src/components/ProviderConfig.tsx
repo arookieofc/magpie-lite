@@ -17,7 +17,7 @@ import VendorIcon, { hostOf, presetIconForHost } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import AddProvider, { type PastedEndpoint } from "./AddProvider";
 import CustomProvider from "./CustomProvider";
-import { splitKeys } from "../util";
+import { originOfUrl, splitKeys, withOriginUrl } from "../util";
 
 function policyLabel(v: string, t: TFunc): string {
   switch (v) {
@@ -135,6 +135,7 @@ interface Draft {
   makeDefault: boolean;
   keyMode: string;
   keys: string;
+  serverAddress: string;
   testModel: string;
   icon: string;
 }
@@ -148,6 +149,7 @@ function blankDraft(isFirst: boolean): Draft {
     routing: "rotate", affinity: "auto", weights: "", keyLimits: "",
     cooldown: "", maxConcurrency: "", maxRpm: "", queueLimit: "", queueWait: "",
     pinUpstream: false, makeDefault: isFirst, keyMode: "replace", keys: "", testModel: "", icon: "",
+    serverAddress: "",
   };
 }
 
@@ -163,6 +165,7 @@ function draftFrom(p: Provider, isDefault: boolean): Draft {
     capTools: triState(p.capabilities?.tools),
     capVision: triState(p.capabilities?.vision),
     baseUrl: p.base_url,
+    serverAddress: originOfUrl(p.base_url),
     models: (p.models ?? []).join("\n"),
     contexts: Object.entries(p.contexts ?? {}).map(([m, w]) => `${m}=${w}`).join("\n"),
     outputs: Object.entries(p.outputs ?? {}).map(([m, l]) => `${m}=${l}`).join("\n"),
@@ -303,6 +306,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       name: pr.name,
       protocol: pr.protocol,
       baseUrl: pr.chat || pr.responses || pr.anthropic || pr.gemini || "",
+      serverAddress: originOfUrl(pr.chat || pr.responses || pr.anthropic || pr.gemini || ""),
       keyMode: "replace",
     });
     setMessage("");
@@ -332,6 +336,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       name: next.name,
       protocol: next.protocol,
       baseUrl: next.chat || next.responses || next.anthropic || next.gemini || "",
+      serverAddress: originOfUrl(next.chat || next.responses || next.anthropic || next.gemini || ""),
     }));
     setMessage("");
     setDiscovered([]);
@@ -721,6 +726,45 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   // Live count for the key pool box, matching the custom dialog's hint:
   // keys come one a line or separated by commas.
   const poolKeyCount = splitKeys(draft.keys).length;
+  // A local server's address moves each URL, keeping its path
+  // (upstream provider.AtAddress). Shown first, only for local-kind
+  // presets: a new draft from one, or a saved provider born from one.
+  // A localhost base URL also qualifies, so older rows get the box.
+  const presetBase = preset?.chat || preset?.responses || preset?.anthropic || preset?.gemini || "";
+  const isLocalHost = (value: string): boolean => {
+    const s = value.trim();
+    if (!s) return false;
+    try {
+      const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `http://${s}`);
+      const h = u.hostname.toLowerCase();
+      return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".local");
+    } catch {
+      return false;
+    }
+  };
+  const showServerAddress =
+    editing === null
+      ? preset?.kind === "local"
+      : editingProvider
+        ? (presets ?? []).some(
+            (pr) => pr.kind === "local" &&
+              (editingProvider.id === pr.id || editingProvider.id.startsWith(`${pr.id}-`)),
+          ) || isLocalHost(draft.baseUrl)
+        : false;
+  const onServerAddress = (v: string) => {
+    const patch: Partial<Draft> = { serverAddress: v };
+    const next = withOriginUrl(draft.baseUrl || presetBase, v);
+    if (next !== draft.baseUrl) patch.baseUrl = next;
+    set(patch);
+  };
+  const onBaseUrl = (v: string) => {
+    const patch: Partial<Draft> = { baseUrl: v };
+    if (showServerAddress) {
+      const o = originOfUrl(v);
+      if (o && o !== draft.serverAddress) patch.serverAddress = o;
+    }
+    set(patch);
+  };
   const editorForm = (
     <form className="editor" onSubmit={save} autoComplete="off">
       <div className="editor-head">
@@ -768,6 +812,13 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         ) : null}
 
         <FormSection title={t("prov.secEndpoint")} description={t("prov.secEndpointDesc")}>
+          {showServerAddress ? (
+            <Field label={t("prov.serverAddress")} htmlFor="provider-address" help={t("prov.serverAddressHelp")}>
+              <input id="provider-address" className="input mono" inputMode="url" autoComplete="off" spellCheck={false}
+                placeholder={originOfUrl(presetBase || draft.baseUrl)}
+                value={draft.serverAddress} onChange={(e) => onServerAddress(e.target.value)} />
+            </Field>
+          ) : null}
           <div className="form-grid">
             <Field label={t("prov.fId")} htmlFor="provider-id"
               help={t("prov.fIdHelp")}>
@@ -792,7 +843,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
               help={t("prov.fUrlHelp")}>
               <input id="provider-url" className="input mono" type="url" required
                 placeholder="https://api.example.com/v1"
-                value={draft.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} />
+                value={draft.baseUrl} onChange={(e) => onBaseUrl(e.target.value)} />
             </Field>
           </div>
           <fieldset className="choice-field">
