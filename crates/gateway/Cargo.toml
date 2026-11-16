@@ -8,6 +8,7 @@ license.workspace = true
 magpie-agents = { path = "../agents" }
 magpie-core = { path = "../core" }
 magpie-router = { path = "../router" }
+magpie-store = { path = "../store" }
 anyhow.workspace = true
 async-stream.workspace = true
 axum.workspace = true

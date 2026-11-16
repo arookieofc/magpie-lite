@@ -11,6 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use magpie_core::effort::Effort;
 use magpie_core::ir::{CompletionRequest, Usage};
 use serde::{Deserialize, Serialize};
+use magpie_store::Store;
 
 /// How many recent request records are kept for `/stats`.
 const RECENT_LIMIT: usize = 1_000;
@@ -313,7 +314,9 @@ pub struct StatsSnapshot {
 /// Request totals and recent history for one gateway process.
 ///
 /// When a history file is configured, completed records are appended as JSONL
-/// and the most recent bounded window is loaded on startup. Aggregate totals
+/// and the most recent bounded window is loaded on startup. Otherwise the
+/// embedded SQLite database (`magpie.db` beside the config) plays the same
+/// role. Aggregate totals
 /// intentionally remain process-local: reloading only the recent window cannot
 /// reconstruct trustworthy lifetime totals or every historical key attempt.
 #[derive(Debug)]
@@ -323,6 +326,9 @@ pub struct RequestLog {
     providers: BTreeMap<String, ProviderStats>,
     recent_requests: Vec<RequestRecord>,
     sink: Option<File>,
+    /// Embedded history database. `None` when the log is memory-only or
+    /// backed by a JSONL file.
+    store: Option<Store>,
     /// Monotonic counter bumped on every finished request, for the
     /// `/api/trace` long-poll: a page asks for what changed `after` its
     /// last seq. Process-local; a restarted log starts at 0 and the
@@ -342,6 +348,7 @@ impl Default for RequestLog {
             providers: BTreeMap::new(),
             recent_requests: Vec::new(),
             sink: None,
+            store: None,
             seq: 0,
             trace_wake: tokio::sync::watch::channel(0).0,
         }
@@ -388,6 +395,25 @@ impl RequestLog {
         Ok(log)
     }
 
+    /// Open the embedded SQLite history database, loading the most recent
+    /// bounded window. Damaged rows are skipped, never fatal — the same
+    /// tolerance as [`RequestLog::open`].
+    pub fn open_db(path: &Path) -> anyhow::Result<Self> {
+        let store = Store::open(path)?;
+        let recent = store.load_recent(RECENT_LIMIT)?;
+        let mut log = Self {
+            store: Some(store),
+            ..Self::default()
+        };
+        for body in recent {
+            let Ok(record) = serde_json::from_value::<RequestRecord>(body) else {
+                continue;
+            };
+            log.recent_requests.push(record);
+        }
+        Ok(log)
+    }
+
     /// Record one concrete upstream key attempt. Finished request totals are
     /// counted separately by [`RequestLog::record`].
     pub fn record_attempt(&mut self, provider: &str, key_slot: usize, status: &str) {
@@ -406,6 +432,24 @@ impl RequestLog {
         self.seq = self.seq.saturating_add(1);
         record.seq = self.seq;
         self.persist(&record);
+        if let Some(store) = self.store.as_ref() {
+            let body = serde_json::to_value(&record);
+            let result: anyhow::Result<()> = (|| {
+                let body = body?;
+                store.append_request(
+                    record.started_unix_ms as i64,
+                    &record.provider,
+                    &record.status,
+                    record.usage.input.unwrap_or(0) as i64,
+                    record.usage.output.unwrap_or(0) as i64,
+                    &body,
+                )?;
+                Ok(())
+            })();
+            if let Err(error) = result {
+                tracing::warn!("could not store request history: {error}");
+            }
+        }
         self.total_requests = self.total_requests.saturating_add(1);
         let ok = record.status == "ok";
         if !ok {
@@ -927,6 +971,36 @@ mod tests {
             ]
         );
         fs::remove_file(&path).ok();
+    }
+
+    fn db_path(label: &str) -> PathBuf {
+        let mut path = history_path(label);
+        path.set_extension("db");
+        path
+    }
+
+    #[test]
+    fn db_round_trips_recent_window() {
+        let path = db_path("db-round-trip");
+        let mut log = RequestLog::open_db(&path).unwrap();
+        log.record(record(7, "ok"));
+        log.record(record(8, "upstream_error"));
+        drop(log);
+
+        let reloaded = RequestLog::open_db(&path).unwrap();
+        let snapshot = reloaded.snapshot();
+        // Aggregates stay process-local, like the JSONL history.
+        assert_eq!(snapshot.total_requests, 0);
+        assert!(snapshot.providers.is_empty());
+        assert_eq!(snapshot.recent_requests.len(), 2);
+        assert_eq!(snapshot.recent_requests[0].requested_model, "mock/model-7");
+        assert_eq!(snapshot.recent_requests[1].status, "upstream_error");
+
+        for suffix in ["", "-wal", "-shm"] {
+            let mut sidecar = path.as_os_str().to_os_string();
+            sidecar.push(suffix);
+            let _ = fs::remove_file(PathBuf::from(sidecar));
+        }
     }
 
     #[test]

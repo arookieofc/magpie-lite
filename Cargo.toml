@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/router", "crates/gateway", "crates/cli", "crates/agents", "crates/app"]
+members = ["crates/core", "crates/router", "crates/gateway", "crates/cli", "crates/agents", "crates/app", "crates/store"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,6 +9,7 @@ license = "MIT"
 
 [workspace.dependencies]
 base64 = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"

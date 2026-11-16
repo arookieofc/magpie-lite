@@ -133,6 +133,31 @@ pub async fn serve(config: Config, port: Option<u16>) -> anyhow::Result<()> {
     serve_with_config_path(config, port, None, None).await
 }
 
+/// Open the request history: the JSONL file when one is configured
+/// (an explicit override wins over the config), else the embedded SQLite
+/// database beside the resolved config. A broken database never blocks
+/// startup: the gateway warns and runs with a memory-only log.
+fn open_request_log(
+    history_path: Option<&std::path::PathBuf>,
+    config: &Config,
+    agent_config: &std::path::Path,
+) -> anyhow::Result<RequestLog> {
+    if let Some(path) = history_path.or(config.history_path.as_ref()) {
+        return RequestLog::open(path);
+    }
+    let db_path = magpie_store::default_db_path(agent_config);
+    match RequestLog::open_db(&db_path) {
+        Ok(log) => Ok(log),
+        Err(error) => {
+            tracing::warn!(
+                "history database {} unavailable ({error:#}); recent history is memory-only",
+                db_path.display()
+            );
+            Ok(RequestLog::default())
+        }
+    }
+}
+
 /// Run with persistent console editing and an optional runtime-only history override.
 pub async fn serve_with_config_path(
     config: Config,
@@ -146,17 +171,15 @@ pub async fn serve_with_config_path(
     let addr = listener.local_addr()?;
     let port = addr.port();
     let http = upstream::http_client()?;
-    let requests = match history_path.as_ref().or(config.history_path.as_ref()) {
-        Some(path) => {
-            let log = RequestLog::open(path)?;
-            Arc::new(Mutex::new(log))
-        }
-        None => Arc::new(Mutex::new(RequestLog::default())),
-    };
     let agent_config = match &config_path {
         Some(path) => path.clone(),
         None => crate::config::config_path()?,
     };
+    let requests = Arc::new(Mutex::new(open_request_log(
+        history_path.as_ref(),
+        &config,
+        &agent_config,
+    )?));
     let agent_state_dir = magpie_agents::lifecycle::state_directory(&agent_config)?;
     retired_store::init(agent_state_dir.join("retired.json"));
     let manager = magpie_agents::lifecycle::Manager::native(agent_state_dir.clone())?;
@@ -209,17 +232,15 @@ pub async fn serve_on_listener(
     let addr = listener.local_addr()?;
     let port = addr.port();
     let http = upstream::http_client()?;
-    let requests = match history_path.as_ref().or(config.history_path.as_ref()) {
-        Some(path) => {
-            let log = RequestLog::open(path)?;
-            Arc::new(Mutex::new(log))
-        }
-        None => Arc::new(Mutex::new(RequestLog::default())),
-    };
     let agent_config = match &config_path {
         Some(path) => path.clone(),
         None => crate::config::config_path()?,
     };
+    let requests = Arc::new(Mutex::new(open_request_log(
+        history_path.as_ref(),
+        &config,
+        &agent_config,
+    )?));
     let agent_state_dir = magpie_agents::lifecycle::state_directory(&agent_config)?;
     retired_store::init(agent_state_dir.join("retired.json"));
     let manager = magpie_agents::lifecycle::Manager::native(agent_state_dir.clone())?;

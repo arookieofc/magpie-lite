@@ -1550,7 +1550,9 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vision: Option<String>,
     /// Optional JSONL file for sanitized request-history metadata. Setting this
-    /// makes recent `/stats` records survive gateway restarts.
+    /// makes recent `/stats` records survive gateway restarts. When unset,
+    /// the gateway keeps them in the embedded SQLite database (`magpie.db`
+    /// beside the config) instead; both carry the same metadata-only rows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history_path: Option<std::path::PathBuf>,
     /// The upstreams.

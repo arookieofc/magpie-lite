@@ -94,6 +94,7 @@ magpie-lite stats
 # optionally keep sanitized recent history across restarts
 magpie-lite serve --history-file 'D:\magpie\history.jsonl'
 # or set history_path in config.toml
+# without either, recent history lives in magpie.db beside the config
 ```
 
 Restart the agent after wiring it. For Zed, also set MAGPIE_LITE_API_KEY to the gateway token in Zed's environment, or enter that token in Zed's AI provider settings. Disconnect through the console or `magpie-lite agent disconnect <id>` to restore the saved original configuration, provided no conflicting edits were made.
