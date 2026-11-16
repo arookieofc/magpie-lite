@@ -1,8 +1,10 @@
 import { Layers } from "lucide-react";
 import type { ModelsResponse } from "../types";
 import { Card, Empty } from "./ui";
+import { useT } from "../i18n";
 
 export default function Models({ models }: { models: ModelsResponse | null }) {
+  const t = useT();
   const list = models?.data ?? [];
   const byOwner = new Map<string, string[]>();
   for (const m of list) {
@@ -11,13 +13,13 @@ export default function Models({ models }: { models: ModelsResponse | null }) {
   }
   return (
     <Card
-      title="Model catalog"
+      title={t("models.title")}
       icon={<Layers size={16} />}
-      description={`${list.length} routes agents can choose from /v1/models`}
+      description={t("models.desc", { n: list.length })}
       labelledBy="models-title"
     >
       {list.length === 0 ? (
-        <Empty icon={<Layers size={18} />} title="No models are configured" />
+        <Empty icon={<Layers size={18} />} title={t("models.emptyTitle")} />
       ) : (
         <div className="catalog">
           {[...byOwner.entries()].map(([owner, ids]) => (

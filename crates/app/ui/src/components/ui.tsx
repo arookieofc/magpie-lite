@@ -2,6 +2,7 @@ import { useEffect, useRef, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { hueOf, initials } from "../util";
+import { useT } from "../i18n";
 
 export type Tone = "good" | "bad" | "warn" | "accent" | "neutral";
 
@@ -165,16 +166,19 @@ export function Empty({
   icon,
   title,
   children,
+  action,
 }: {
   icon?: ReactNode;
   title: string;
   children?: ReactNode;
+  action?: ReactNode;
 }) {
   return (
     <div className="empty">
       {icon ? <span className="empty-icon">{icon}</span> : null}
       <p className="empty-title">{title}</p>
       {children ? <p className="empty-copy">{children}</p> : null}
+      {action ? <div className="empty-action">{action}</div> : null}
     </div>
   );
 }
@@ -267,6 +271,7 @@ export function Sheet({
   closeRef.current = onClose;
   const busyRef = useRef(busy);
   busyRef.current = busy;
+  const t = useT();
   const requestClose = () => {
     if (!busyRef.current) closeRef.current();
   };
@@ -322,7 +327,7 @@ export function Sheet({
         <button
           type="button"
           className="icon-btn"
-          aria-label="Close panel"
+          aria-label={t("common.closePanel")}
           disabled={busy}
           onClick={requestClose}
         >

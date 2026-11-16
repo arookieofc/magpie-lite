@@ -1,0 +1,55 @@
+/* ── Design tokens (Astryx-inspired) ────────────────────────────────────
+   Semantic layer on top of the existing dark/light themes.
+   Naming follows Astryx colorVars / spacingVars / radiusVars so a future
+   move to @astryxdesign/core is mechanical. Values alias the current
+   console theme, so this file changes no pixels by itself. */
+
+:root {
+  --spacing-0_5: 2px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+
+  --radius-element-sm: var(--radius-sm);
+  --radius-element-md: var(--radius-md);
+  --radius-surface: var(--radius);
+
+  --size-element-sm: 28px;
+  --size-element-md: 34px;
+  --size-element-lg: 40px;
+}
+
+:root,
+[data-theme="dark"] {
+  --color-background-body: var(--bg);
+  --color-background-surface: var(--surface);
+  --color-background-card: var(--surface);
+  --color-background-muted: var(--surface-2);
+  --color-text-primary: var(--text);
+  --color-text-secondary: var(--text-2);
+  --color-text-disabled: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-success: var(--good);
+  --color-error: var(--bad);
+  --color-warning: var(--warn);
+}
+
+[data-theme="light"] {
+  --color-background-body: var(--bg);
+  --color-background-surface: var(--surface);
+  --color-background-card: var(--surface);
+  --color-background-muted: var(--surface-2);
+  --color-text-primary: var(--text);
+  --color-text-secondary: var(--text-2);
+  --color-text-disabled: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-success: var(--good);
+  --color-error: var(--bad);
+  --color-warning: var(--warn);
+}

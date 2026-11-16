@@ -34,6 +34,7 @@ import {
   Sheet,
   type Tone,
 } from "./ui";
+import { useT } from "../i18n";
 
 interface Props {
   agents: AgentsResponse | null;
@@ -53,6 +54,7 @@ export default function Agents({
   setBusy,
   onChanged,
 }: Props) {
+  const t = useT();
   const list = useMemo(() => agents?.agents ?? [], [agents]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [action, setAction] = useState("connect");
@@ -95,9 +97,9 @@ export default function Agents({
     setPreview(null);
     setMessage(
       target.recovery_needed
-        ? "An operation was interrupted. Recovery rolls back a connect or completes a disconnect using its private journal."
+        ? t("agents.recoveryMsg")
         : target.drifted
-          ? "A managed field, file format or overriding path changed. Preview will check whether this operation is safe; conflicting edits are never overwritten."
+          ? t("agents.driftMsg")
           : "",
     );
   }
@@ -117,18 +119,18 @@ export default function Agents({
     e.preventDefault();
     if (busy || !agent) return;
     if (connect && !model.trim()) {
-      setMessage("Choose a configured route, or enter a provider/model or group/id.");
+      setMessage(t("agents.chooseRoute"));
       return;
     }
     setBusy(true);
-    setMessage("Preparing a private preview; agent files are unchanged…");
+    setMessage(t("agents.preparing"));
     try {
       const result = await api.post<AgentPreview>(
         `/agents/${encodeURIComponent(agent.id)}/preview`,
         editBody(),
       );
       setPreview(result);
-      setMessage("Preview ready. No agent files have been changed.");
+      setMessage(t("agents.previewReady"));
     } catch (err) {
       setPreview(null);
       setMessage((err as Error).message);
@@ -140,7 +142,7 @@ export default function Agents({
   async function runApply() {
     if (busy || !agent || !preview) return;
     setBusy(true);
-    setMessage("Applying reviewed changes…");
+    setMessage(t("agents.applying"));
     try {
       const result = await api.post<Agent>(`/agents/${encodeURIComponent(agent.id)}/apply`, {
         ...editBody(),
@@ -149,13 +151,13 @@ export default function Agents({
       setPreview(null);
       setMessage(
         connect
-          ? `Connected to ${result.model ?? model}. ${result.notice ?? ""}`.trim()
-          : `Managed settings restored; unrelated edits preserved. ${result.notice ?? ""}`.trim(),
+          ? t("agents.connectedTo", { model: result.model ?? model, notice: result.notice ?? "" }).trim()
+          : t("agents.restored", { notice: result.notice ?? "" }).trim(),
       );
       onChanged();
     } catch (err) {
       setMessage(
-        `${(err as Error).message} Preview again before retrying; refresh status if the operation was interrupted.`,
+        `${(err as Error).message}${t("agents.previewRetry")}`,
       );
     } finally {
       setBusy(false);
@@ -166,19 +168,19 @@ export default function Agents({
     if (busy || !agent) return;
     if (
       !window.confirm(
-        `Recover the interrupted operation for ${agent.name}? This uses the private journal to roll back a connect or finish a disconnect. Conflicting edits will not be overwritten.`,
+        t("agents.recoverConfirm", { name: agent.name }),
       )
     ) {
       return;
     }
     setBusy(true);
-    setMessage("Recovering interrupted operation…");
+    setMessage(t("agents.recovering"));
     try {
       const result = await api.post<Agent>(`/agents/${encodeURIComponent(agent.id)}/recover`);
-      setMessage(`Recovery complete. ${result.notice ?? ""}`.trim());
+      setMessage(t("agents.recovered", { notice: result.notice ?? "" }).trim());
       onChanged();
     } catch (err) {
-      setMessage(`${(err as Error).message} Resolve the issue or refresh status before retrying.`);
+      setMessage(`${(err as Error).message}${t("agents.recoverRetry")}`);
     } finally {
       setBusy(false);
     }
@@ -191,10 +193,10 @@ export default function Agents({
   };
 
   function statusOf(status: Agent): { label: string; tone: Tone } {
-    if (status.recovery_needed) return { label: "Recovery needed", tone: "warn" };
-    if (status.drifted) return { label: "Configuration drift", tone: "warn" };
-    if (status.connected) return { label: "Connected", tone: "good" };
-    return { label: "Not connected", tone: "neutral" };
+    if (status.recovery_needed) return { label: t("agents.statusRecovery"), tone: "warn" };
+    if (status.drifted) return { label: t("agents.statusDrift"), tone: "warn" };
+    if (status.connected) return { label: t("agents.statusConnected"), tone: "good" };
+    return { label: t("agents.statusOff"), tone: "neutral" };
   }
 
   const current = agent ? statusOf(agent) : null;
@@ -202,28 +204,27 @@ export default function Agents({
   return (
     <>
       <PageHeader
-        title="Coding agents"
-        subtitle="Point each agent at a provider model or routing group. Every change is previewed first."
+        title={t("page.agentsTitle")}
+        subtitle={t("page.agentsSub")}
       >
         <button type="button" className="btn" disabled={busy} onClick={onChanged}>
           <RefreshCw size={14} aria-hidden="true" />
-          Refresh agents
+          {t("agents.refresh")}
         </button>
       </PageHeader>
 
-      <div className="summary-strip" aria-label="Agent summary">
-        <span><b>{counts.connected}</b> connected</span>
-        <span><b>{counts.detected}</b> detected locally</span>
+      <div className="summary-strip" aria-label={t("agents.summary")}>
+        <span><b>{counts.connected}</b> {t("agents.connected")}</span>
+        <span><b>{counts.detected}</b> {t("agents.detected")}</span>
         <span className={counts.attention ? "text-warn" : ""}>
-          <b>{counts.attention}</b> need attention
+          <b>{counts.attention}</b> {t("agents.attention")}
         </span>
-        <span><b>{list.length}</b> supported</span>
+        <span><b>{list.length}</b> {t("agents.supported")}</span>
       </div>
 
       {agentsError ? (
         <Notice tone="bad" icon={<CircleAlert size={16} />} live>
-          Agent status unavailable: {agentsError} Use Refresh agents to retry. Other console tools
-          remain available.
+          {t("agents.unavailable", { error: agentsError })}
         </Notice>
       ) : null}
       {!agent && message ? (
@@ -234,29 +235,29 @@ export default function Agents({
 
       <Card flush className="agents-card">
         {list.length === 0 ? (
-          <Empty icon={<Bot size={18} />} title="No agent status yet" />
+          <Empty icon={<Bot size={18} />} title={t("agents.emptyTitle")} />
         ) : (
-          <ul className="agent-rows" aria-label="Supported coding agents">
+          <ul className="agent-rows" aria-label={t("agents.listAria")}>
             {list.map((status) => {
               const { label, tone } = statusOf(status);
               const detection = status.detection;
               const found = detection
                 ? detection.config_file
-                  ? "Configuration file found"
+                  ? t("agents.foundFile")
                   : detection.config_directory
-                    ? "Configuration directory found"
-                    : "No user configuration yet"
+                    ? t("agents.foundDir")
+                    : t("agents.noConfig")
                 : status.detected
-                  ? "Detected locally"
-                  : "Not detected · can create configuration";
+                  ? t("agents.detectedLocal")
+                  : t("agents.notDetected");
               const cli = detection
                 ? detection.cli
                   ? detection.cli.on_path === true
-                    ? { text: "CLI on gateway's PATH", tone: "good" }
+                    ? { text: t("agents.cliPath"), tone: "good" }
                     : detection.cli.on_path === false
-                      ? { text: "CLI found · not on gateway's PATH", tone: "warn" }
-                      : { text: "CLI found · PATH unknown (search limited)", tone: "warn" }
-                  : { text: "CLI not found in searched directories", tone: "muted" }
+                      ? { text: t("agents.cliFoundNoPath"), tone: "warn" }
+                      : { text: t("agents.cliUnknown"), tone: "warn" }
+                  : { text: t("agents.cliMissing"), tone: "muted" }
                 : null;
               return (
                 <li
@@ -272,7 +273,7 @@ export default function Agents({
                     {status.model ? (
                       <code className="route">{status.model}</code>
                     ) : (
-                      <span className="text-muted">No managed model</span>
+                      <span className="text-muted">{t("agents.noModel")}</span>
                     )}
                   </div>
                   <div className="agent-cli">
@@ -289,7 +290,7 @@ export default function Agents({
                         ) : null}
                         {detection?.search_limited ? (
                           <span className="cli-state warn">
-                            CLI search reached its entry limit; an installation may be omitted.
+                            {t("agents.cliLimited")}
                           </span>
                         ) : null}
                       </>
@@ -304,11 +305,11 @@ export default function Agents({
                     type="button"
                     className="btn sm"
                     disabled={busy}
-                    aria-label={`Manage ${status.name}`}
+                    aria-label={t("agents.manage", { name: status.name })}
                     aria-expanded={status.id === editingId}
                     onClick={() => open(status)}
                   >
-                    Manage
+                    {t("agents.manageBtn")}
                   </button>
                 </li>
               );
@@ -318,8 +319,7 @@ export default function Agents({
       </Card>
       <p className="footnote">
         <Info size={14} aria-hidden="true" />
-        Detection never runs an agent. CLI paths describe this gateway's environment, not a new
-        terminal; they are not version or health checks.
+        {t("agents.detectNote")}
       </p>
 
       <Sheet
@@ -328,7 +328,7 @@ export default function Agents({
         busy={busy}
         onSubmit={runPreview}
         icon={agent ? <Avatar name={agent.name} size="lg" /> : null}
-        title={agent ? `Manage ${agent.name}` : ""}
+        title={agent ? t("agents.manageTitle", { name: agent.name }) : ""}
         description={
           current ? (
             <Badge tone={current.tone} dot>
@@ -340,7 +340,7 @@ export default function Agents({
           agent ? (
             <>
               <button type="button" className="btn ghost" disabled={busy} onClick={close}>
-                Cancel
+                {t("agents.cancel")}
               </button>
               <span className="spacer" />
               {pending ? (
@@ -351,7 +351,7 @@ export default function Agents({
                   onClick={runRecover}
                 >
                   <Undo2 size={14} aria-hidden="true" />
-                  Recover interrupted operation
+                  {t("agents.recover")}
                 </button>
               ) : (
                 <>
@@ -361,12 +361,12 @@ export default function Agents({
                     disabled={busy || pending}
                   >
                     <Eye size={14} aria-hidden="true" />
-                    {preview ? "Preview again" : "Preview changes"}
+                    {preview ? t("agents.previewAgain") : t("agents.previewChanges")}
                   </button>
                   {preview ? (
                     <button type="button" className="btn primary" disabled={busy} onClick={runApply}>
                       <Check size={14} aria-hidden="true" />
-                      {connect ? "Confirm connection" : "Confirm restoration"}
+                      {connect ? t("agents.confirmConn") : t("agents.confirmRestore")}
                     </button>
                   ) : null}
                 </>
@@ -379,9 +379,9 @@ export default function Agents({
           <>
             {agent.notice ? <p className="sheet-lead">{agent.notice}</p> : null}
 
-            <FormSection title="Operation">
+            <FormSection title={t("agents.opTitle")}>
               <Segmented
-                label="Operation"
+                label={t("agents.opTitle")}
                 value={action}
                 disabled={busy || pending}
                 onChange={(value) => {
@@ -389,19 +389,19 @@ export default function Agents({
                   setPreview(null);
                 }}
                 options={[
-                  { value: "connect", label: "Connect / change model" },
+                  { value: "connect", label: t("agents.opConnect") },
                   {
                     value: "disconnect",
-                    label: "Disconnect / restore",
+                    label: t("agents.opDisconnect"),
                     disabled: !agent.connected,
                   },
                 ]}
               />
               <Field
-                label="Model route"
+                label={t("agents.modelRoute")}
                 htmlFor="agent-model"
                 hidden={!connect || pending}
-                help="Choose a configured route, or enter a provider/model or group/id. Providers and groups must already exist."
+                help={t("agents.modelRouteHelp")}
               >
                 <input
                   id="agent-model"
@@ -410,7 +410,7 @@ export default function Agents({
                   autoComplete="off"
                   spellCheck={false}
                   required={connect && !pending}
-                  placeholder="provider/model or group/id"
+                  placeholder={t("agents.modelRoutePh")}
                   value={model}
                   disabled={busy || !connect || pending}
                   onChange={(e) => {
@@ -421,9 +421,9 @@ export default function Agents({
               </Field>
             </FormSection>
 
-            <FormSection title="Managed files" description="User-level files this operation may touch.">
+            <FormSection title={t("agents.filesTitle")} description={t("agents.filesDesc")}>
               {(agent.files ?? []).length ? (
-                <ul className="file-list" aria-label="Managed configuration paths">
+                <ul className="file-list" aria-label={t("agents.filesAria")}>
                   {(agent.files ?? []).map((path) => (
                     <li key={path}>
                       <FileText size={13} aria-hidden="true" />
@@ -432,21 +432,19 @@ export default function Agents({
                   ))}
                 </ul>
               ) : (
-                <p className="text-muted">No managed files reported.</p>
+                <p className="text-muted">{t("agents.filesEmpty")}</p>
               )}
             </FormSection>
 
             <Notice tone="warn" icon={<TriangleAlert size={16} />}>
-              Backups contain plaintext credentials, not encrypted secrets. Restore refuses
-              conflicting file edits. Project settings and environment variables can override these
-              user-level files.
+              {t("agents.backupWarn")}
             </Notice>
 
             {preview ? (
               <section className="preview" aria-labelledby="agent-preview-title">
                 <div className="preview-head">
                   <h3 id="agent-preview-title">
-                    {connect ? "Review connection" : "Review restoration"}
+                    {connect ? t("agents.reviewConn") : t("agents.reviewRestore")}
                   </h3>
                   <p>
                     {connect ? (
@@ -454,7 +452,7 @@ export default function Agents({
                         {agent.name} <ArrowRight size={12} aria-hidden="true" /> <code>{model}</code>
                       </>
                     ) : (
-                      `Restore the original files for ${agent.name}.`
+                      t("agents.restoreText", { name: agent.name })
                     )}
                   </p>
                 </div>
@@ -465,15 +463,14 @@ export default function Agents({
                       <span className="preview-op">
                         <Badge tone="accent">{file.operation}</Badge>
                         <span className="text-muted">
-                          {fmt(file.before_bytes)} → {fmt(file.after_bytes)} bytes
+                          {t("agents.bytes", { a: fmt(file.before_bytes), b: fmt(file.after_bytes) })}
                         </span>
                       </span>
                     </li>
                   ))}
                 </ul>
                 <p className="help">
-                  File contents and credentials are never shown. If a file or gateway setting
-                  changes, this preview must be generated again.
+                  {t("agents.previewHelp")}
                 </p>
               </section>
             ) : null}

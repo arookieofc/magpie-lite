@@ -1,77 +1,31 @@
-import {
-  Bot,
-  LayoutDashboard,
-  Monitor,
-  Moon,
-  RefreshCw,
-  ScrollText,
-  Server,
-  Sun,
-  Waypoints,
-  type LucideIcon,
-} from "lucide-react";
+import { Monitor, Moon, RefreshCw, Sun, type LucideIcon } from "lucide-react";
+import { useLocale, useT, type Locale } from "../i18n";
+import type { ThemeChoice } from "./Sidebar";
+import StatusPill, { type GatewayState } from "./StatusPill";
 
-export type View = "overview" | "agents" | "providers" | "groups" | "requests";
-export type ThemeChoice = "system" | "light" | "dark";
+/* Astryx TopNav slot: compact bar carrying page context + global actions.
+   SideNav owns navigation; TopBar owns status and commands. */
 
-export interface NavItem {
-  id: View;
-  label: string;
-  badge?: string;
-  alert?: boolean;
-}
-
-const ICONS: Record<View, LucideIcon> = {
-  overview: LayoutDashboard,
-  requests: ScrollText,
-  agents: Bot,
-  providers: Server,
-  groups: Waypoints,
-};
-
-const THEMES: { id: ThemeChoice; label: string; icon: LucideIcon }[] = [
-  { id: "system", label: "System theme", icon: Monitor },
-  { id: "light", label: "Light theme", icon: Sun },
-  { id: "dark", label: "Dark theme", icon: Moon },
+const THEME_ICONS: { id: ThemeChoice; icon: LucideIcon }[] = [
+  { id: "system", icon: Monitor },
+  { id: "light", icon: Sun },
+  { id: "dark", icon: Moon },
 ];
 
-interface Props {
-  items: NavItem[];
-  view: View;
-  healthy: boolean | null;
-  lastUpdate: string | null;
-  refreshFailed: boolean;
-  autoRefresh: boolean;
-  setAutoRefresh: (on: boolean) => void;
-  onRefresh: () => void;
-  refreshing: boolean;
-  busy: boolean;
-  theme: ThemeChoice;
-  setTheme: (theme: ThemeChoice) => void;
-}
+const THEME_LABEL_KEYS = {
+  system: "topbar.themeSystem",
+  light: "topbar.themeLight",
+  dark: "topbar.themeDark",
+} as const;
 
-export function MagpieMark({ size = 18 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M16 7h.01" />
-      <path d="M3.4 18H12a8 8 0 0 0 8-8V7l-4.3-2.1a2 2 0 0 0-2.6.9L11 9.5a2 2 0 0 1-1.6 1L3 12" />
-    </svg>
-  );
-}
+const LANGS: { id: Locale; label: string }[] = [
+  { id: "en", label: "EN" },
+  { id: "zh", label: "中文" },
+];
 
-export default function Topbar({
-  items,
-  view,
+export default function TopBar({
+  title,
+  subtitle,
   healthy,
   lastUpdate,
   refreshFailed,
@@ -82,56 +36,43 @@ export default function Topbar({
   busy,
   theme,
   setTheme,
-}: Props) {
-  const health =
+}: {
+  title: string;
+  subtitle: string;
+  healthy: boolean | null;
+  lastUpdate: string | null;
+  refreshFailed: boolean;
+  autoRefresh: boolean;
+  setAutoRefresh: (on: boolean) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+  busy: boolean;
+  theme: ThemeChoice;
+  setTheme: (theme: ThemeChoice) => void;
+}) {
+  const t = useT();
+  const { locale, setLocale } = useLocale();
+  const state: GatewayState =
     healthy === null
-      ? { label: "Checking", tone: "warn" }
+      ? "checking"
       : healthy
-        ? { label: "Online", tone: "good" }
-        : { label: "Offline", tone: "bad" };
+        ? "online"
+        : "offline";
   const sync = refreshFailed
-    ? "Refresh failed"
+    ? t("topbar.refreshFailed")
     : lastUpdate
-      ? `Synced ${lastUpdate}`
-      : "Loading…";
+      ? t("topbar.synced", { time: lastUpdate })
+      : t("topbar.loading");
 
   return (
-    <header className="top">
-      <div className="brand">
-        <span className="brand-mark">
-          <MagpieMark />
-        </span>
-        <div className="brand-text">
-          <strong>magpie</strong>
-          <small>lite</small>
-        </div>
+    <header className="topbar">
+      <div className="topbar-context">
+        <strong>{title}</strong>
+        <span>{subtitle}</span>
       </div>
-
-      <nav className="seg" aria-label="Console sections">
-        {items.map((item) => {
-          const Icon = ICONS[item.id];
-          return (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              className="seg-btn"
-              aria-current={item.id === view ? "page" : undefined}
-            >
-              <Icon size={15} strokeWidth={1.9} aria-hidden="true" />
-              <span>{item.label}</span>
-              {item.alert ? <span className="seg-dot" title="Needs attention" /> : null}
-            </a>
-          );
-        })}
-      </nav>
-
-      <div className="top-actions">
-        <div className="gw-status" role="status" aria-live="polite" title={sync}>
-          <span className={`pulse ${health.tone}`} aria-hidden="true" />
-          <span className="gw-label">{health.label}</span>
-          <span className="gw-sync">{sync}</span>
-        </div>
-        <label className="switch small" title="Auto refresh every 5s">
+      <div className="topbar-actions">
+        <StatusPill state={state} sync={sync} />
+        <label className="switch small" title={t("topbar.auto")}>
           <input
             type="checkbox"
             role="switch"
@@ -143,15 +84,30 @@ export default function Topbar({
         <button
           type="button"
           className={`icon-btn${refreshing ? " spinning" : ""}`}
-          aria-label="Refresh now"
-          title="Refresh now"
+          aria-label={t("topbar.refresh")}
+          title={t("topbar.refresh")}
           disabled={busy}
           onClick={onRefresh}
         >
           <RefreshCw size={15} />
         </button>
-        <div className="theme-switch" role="radiogroup" aria-label="Color theme">
-          {THEMES.map((option) => {
+        <div className="lang-switch" role="radiogroup" aria-label={t("topbar.lang")}>
+          {LANGS.map((lang) => (
+            <button
+              key={lang.id}
+              type="button"
+              role="radio"
+              aria-checked={locale === lang.id}
+              aria-label={lang.id === "en" ? "English" : "中文"}
+              title={lang.id === "en" ? "English" : "中文"}
+              onClick={() => setLocale(lang.id)}
+            >
+              {lang.label}
+            </button>
+          ))}
+        </div>
+        <div className="theme-switch" role="radiogroup" aria-label={t("topbar.theme")}>
+          {THEME_ICONS.map((option) => {
             const Icon = option.icon;
             return (
               <button
@@ -159,8 +115,8 @@ export default function Topbar({
                 type="button"
                 role="radio"
                 aria-checked={theme === option.id}
-                aria-label={option.label}
-                title={option.label}
+                aria-label={t(THEME_LABEL_KEYS[option.id])}
+                title={t(THEME_LABEL_KEYS[option.id])}
                 onClick={() => setTheme(option.id)}
               >
                 <Icon size={14} />

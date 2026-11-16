@@ -2,52 +2,54 @@ import { useEffect, useRef } from "react";
 import { Radio } from "lucide-react";
 import type { Config, RequestRecord, Stats, TraceResponse, TryRecord } from "../types";
 import { fmt, formatDuration, timeOf } from "../util";
-import { MagpieMark } from "./Topbar";
+import { MagpieMark } from "./Sidebar";
 import { Badge, Card, Empty } from "./ui";
+import { useT, type TFunc } from "../i18n";
 
-function tryStep(t: TryRecord, isLast: boolean): { text: string; cls: string } {
+function tryStep(t: TryRecord, isLast: boolean, tr: TFunc): { text: string; cls: string } {
   const who = `${t.provider}/${t.model}`;
-  const key = t.key_slot ? ` · key ${t.key_slot + 1}` : "";
-  const effort = t.effort ? ` at ${t.effort}` : "";
-  if (!t.status) return { text: `${who}${key}${effort} is being asked…`, cls: "wait" };
+  const key = t.key_slot ? tr("route.keySlot", { n: t.key_slot + 1 }) : "";
+  const effort = t.effort ? tr("route.effortAt", { effort: t.effort }) : "";
+  if (!t.status) return { text: `${who}${key}${effort} ${tr("route.asked")}`, cls: "wait" };
   if (t.status === "ok") {
     const parts: string[] = [];
-    if (t.ms) parts.push(`answered in ${t.ms}ms`);
-    if (t.first_ms) parts.push(`first bytes ${t.first_ms}ms`);
-    return { text: `${who}${key}${effort} ${parts.join(", ") || "answered"}`, cls: "ok" };
+    if (t.ms) parts.push(tr("route.answeredIn", { ms: t.ms }));
+    if (t.first_ms) parts.push(tr("route.firstBytes", { ms: t.first_ms }));
+    return { text: `${who}${key}${effort} ${parts.join(", ") || tr("route.answeredGeneric")}`, cls: "ok" };
   }
   const bits = [`${who}${key}${effort}`];
   bits.push(
     t.status === "network_error"
-      ? "could not be reached"
+      ? tr("route.unreachable")
       : t.status === "refusal"
-        ? "refused"
+        ? tr("route.refused")
         : t.status === "queue_refused"
-          ? "had a full queue"
+          ? tr("route.queueFull")
           : t.status === "rpm_refused"
-            ? "was out of minute room"
+            ? tr("route.rpmOut")
             : /^\d+$/.test(t.status)
-              ? `answered ${t.status}`
-              : `failed as ${t.status}`,
+              ? tr("route.answeredStatus", { status: t.status })
+              : tr("route.failedAs", { status: t.status }),
   );
-  if (t.queued_ms) bits.push(`waited ${t.queued_ms}ms for a slot`);
-  if (t.rest_ms) bits.push(`rests ${formatDuration(t.rest_ms)}`);
-  if (!isLast) bits.push("so the next was asked");
+  if (t.queued_ms) bits.push(tr("route.waitedSlot", { ms: t.queued_ms }));
+  if (t.rest_ms) bits.push(tr("route.rests", { dur: formatDuration(t.rest_ms) }));
+  if (!isLast) bits.push(tr("route.nextAsked"));
   return { text: bits.join(" · "), cls: "bad" };
 }
 
-function requestCaption(r: RequestRecord): string {
+function requestCaption(r: RequestRecord, tr: TFunc): string {
   const tries = r.tries ?? [];
   const answered = tries.find((t) => t.status === "ok");
   if (answered) {
-    const parts = [`${answered.provider}/${answered.model}`];
-    if (answered.ms) parts.push(`answered in ${answered.ms}ms`);
-    if (tries.length > 1) parts.push(`after ${tries.length} tries`);
-    return parts.join(" · ");
+    const who = `${answered.provider}/${answered.model}`;
+    if (answered.ms && tries.length > 1)
+      return tr("route.answeredViaTries", { who, ms: answered.ms, n: tries.length });
+    if (answered.ms) return tr("route.answeredVia", { who, ms: answered.ms });
+    return who;
   }
   const last = tries[tries.length - 1];
-  if (last) return `${last.provider}/${last.model} · ${r.status || "failed"}`;
-  return r.status || "incomplete";
+  if (last) return tr("route.lastFailed", { who: `${last.provider}/${last.model}`, status: r.status || tr("route.incomplete") });
+  return r.status || tr("route.incomplete");
 }
 
 interface Props {
@@ -57,6 +59,7 @@ interface Props {
 }
 
 export default function Routing({ trace }: Props) {
+  const t = useT();
   const stageRef = useRef<HTMLDivElement>(null);
   const srcsRef = useRef<HTMLDivElement>(null);
   const acctsRef = useRef<HTMLOListElement>(null);
@@ -122,7 +125,7 @@ export default function Routing({ trace }: Props) {
   const tries = latest?.tries ?? [];
   const srcAgents = new Map<string, RequestRecord>();
   for (const r of routes.slice(-6)) {
-    const key = r.client_protocol || "agent";
+    const key = r.client_protocol || t("route.agentFallback");
     if (!srcAgents.has(key)) srcAgents.set(key, r);
   }
   const rerouted = routes.filter((r) => (r.tries ?? []).length > 1).length;
@@ -131,20 +134,20 @@ export default function Routing({ trace }: Props) {
   return (
     <Card
       className="live"
-      title="Live routing"
+      title={t("route.title")}
       icon={<Radio size={16} />}
-      description="The gateway's own record of each request, as it decides."
+      description={t("route.desc")}
       labelledBy="routing-live-title"
       actions={
         latest ? (
           <div className="live-stats">
-            <span><b>{fmt(routes.length)}</b> requests</span>
-            <span><b>{fmt(rerouted)}</b> rerouted</span>
-            <span><b className={failed ? "text-bad" : ""}>{fmt(failed)}</b> errors</span>
-            <Badge tone="good" dot>Live</Badge>
+            <span><b>{fmt(routes.length)}</b> {t("route.requests")}</span>
+            <span><b>{fmt(rerouted)}</b> {t("route.rerouted")}</span>
+            <span><b className={failed ? "text-bad" : ""}>{fmt(failed)}</b> {t("route.errors")}</span>
+            <Badge tone="good" dot>{t("route.live")}</Badge>
           </div>
         ) : (
-          <Badge tone="neutral" dot>Waiting</Badge>
+          <Badge tone="neutral" dot>{t("route.waiting")}</Badge>
         )
       }
     >
@@ -155,7 +158,7 @@ export default function Routing({ trace }: Props) {
             <div className="rt-srcs" ref={srcsRef}>
               {[...srcAgents.values()].map((r) => (
                 <div key={r.client_protocol} className="rt-node rt-src">
-                  <b>{r.client_protocol || "agent"}</b>
+                  <b>{r.client_protocol || t("route.agentFallback")}</b>
                   <small title={r.requested_model}>{r.requested_model}</small>
                 </div>
               ))}
@@ -168,17 +171,20 @@ export default function Routing({ trace }: Props) {
               <small>127.0.0.1</small>
             </div>
             <ol className="rt-accts" ref={acctsRef}>
-              {tries.map((t, i) => (
-                <li key={i} className={t.status === "ok" ? "ok" : t.status ? "bad" : "wait"}>
+              {tries.map((tt, i) => (
+                <li key={i} className={tt.status === "ok" ? "ok" : tt.status ? "bad" : "wait"}>
                   <span className="dot"></span>
-                  <b title={`${t.provider}/${t.model}`}>
-                    {t.provider}/{t.model}
-                    {t.key_slot ? ` · key ${t.key_slot + 1}` : ""}
+                  <b title={`${tt.provider}/${tt.model}`}>
+                    {tt.provider}/{tt.model}
+                    {tt.key_slot ? t("route.keySlot", { n: tt.key_slot + 1 }) : ""}
                   </b>
                   <em>
-                    {[t.ms ? `${t.ms}ms` : "", t.rest_ms ? `rests ${formatDuration(t.rest_ms)}` : ""]
+                    {[
+                      tt.ms ? `${tt.ms}ms` : "",
+                      tt.rest_ms ? t("route.rests", { dur: formatDuration(tt.rest_ms) }) : "",
+                    ]
                       .filter(Boolean)
-                      .join(" · ") || (t.status && t.status !== "ok" ? t.status : "")}
+                      .join(" · ") || (tt.status && tt.status !== "ok" ? tt.status : "")}
                   </em>
                 </li>
               ))}
@@ -188,25 +194,24 @@ export default function Routing({ trace }: Props) {
           <div className="rt-cols">
             <div className="rt-trace">
               <p className="rt-head">
-                Decision · {timeOf(latest.started_unix_ms)}
+                {t("route.decision", { time: timeOf(latest.started_unix_ms) })}
                 <span className={latest.status === "ok" ? "text-good" : "text-bad"}>
-                  {requestCaption(latest)}
+                  {requestCaption(latest, t)}
                 </span>
               </p>
               <ol className="rt-steps">
                 <li className="why">
                   {latest.requested_model.startsWith("group/")
-                    ? `${latest.client_protocol} asked for the routing group ${latest.requested_model}`
-                    : `${latest.client_protocol} asked for ${latest.requested_model}`}
+                    ? t("route.askedGroup", { agent: latest.client_protocol, group: latest.requested_model })
+                    : t("route.askedModel", { agent: latest.client_protocol, model: latest.requested_model })}
                 </li>
                 {latest.replans ? (
                   <li className="aside">
-                    Every member was busy: it waited {latest.replan_waited_ms}ms and asked them
-                    again {latest.replans}×
+                    {t("route.replanned", { ms: latest.replan_waited_ms, n: latest.replans })}
                   </li>
                 ) : null}
-                {tries.map((t, i) => {
-                  const { text, cls } = tryStep(t, i === tries.length - 1);
+                {tries.map((tt, i) => {
+                  const { text, cls } = tryStep(tt, i === tries.length - 1, t);
                   return (
                     <li key={i} className={cls}>
                       {text}
@@ -214,12 +219,12 @@ export default function Routing({ trace }: Props) {
                   );
                 })}
                 {!tries.length && latest.status ? (
-                  <li className="bad">Nothing was tried: {latest.status}</li>
+                  <li className="bad">{t("route.nothingTried", { status: latest.status })}</li>
                 ) : null}
               </ol>
             </div>
             <div className="rt-stream">
-              <p className="rt-head">Stream</p>
+              <p className="rt-head">{t("route.stream")}</p>
               <div className="rt-reqs">
                 {routes
                   .slice(-40)
@@ -234,7 +239,7 @@ export default function Routing({ trace }: Props) {
                           <span>{r.client_protocol}</span>
                         </span>
                         <span className="out">
-                          {n > 1 ? <span className="tries">{n} tries</span> : null}
+                          {n > 1 ? <span className="tries">{t("req.tries", { n })}</span> : null}
                           {r.latency_ms ? `${fmt(r.latency_ms)}ms` : ""}
                           <span className="state">{r.status || "…"}</span>
                         </span>
@@ -246,8 +251,8 @@ export default function Routing({ trace }: Props) {
           </div>
         </>
       ) : (
-        <Empty icon={<Radio size={18} />} title="No request has been routed yet">
-          When one arrives, its path plays out here.
+        <Empty icon={<Radio size={18} />} title={t("route.emptyTitle")}>
+          {t("route.emptyCopy")}
         </Empty>
       )}
     </Card>

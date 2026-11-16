@@ -17,31 +17,36 @@ import {
 import * as api from "../api";
 import type { Config, GroupConfig, ModelsResponse, RoutingRule, Stats } from "../types";
 import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Switch } from "./ui";
+import { useT, type TFunc } from "../i18n";
 
 const RULE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const RULE_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const RULE_CLOCK = /^([01]?\d|2[0-3]):[0-5]\d$/;
 const LEVELS = ["low", "medium", "high", "xhigh", "max"];
 
-const POLICIES: Record<string, string> = {
-  order: "Ordered",
-  rotate: "Rotate",
-  usage: "Least used",
-  free_first: "Free first",
-  weight: "Weighted",
-  manual: "Manual",
-};
+function policyLabel(v: string, t: TFunc): string {
+  switch (v) {
+    case "order": return t("groups.policyOrder");
+    case "rotate": return t("groups.policyRotate");
+    case "usage": return t("groups.policyUsage");
+    case "free_first": return t("groups.policyFreeFirst");
+    case "weight": return t("groups.policyWeight");
+    case "manual": return t("groups.policyManual");
+    default: return v;
+  }
+}
 
-const POLICY_HELP: Record<string, string> = {
-  order: "Always starts at the first route; the rest are fallbacks in listed order.",
-  rotate: "Advances the starting route per request.",
-  usage: "Prefers routes with fewer attempts in this gateway process.",
-  free_first:
-    "Spends the routes whose model you declared free on its provider, then the rest, each in listed order.",
-  weight: "Spreads requests by each route's weight.",
-  manual:
-    "Sends every request to the picked member; the others, and the rules, wait until another member is picked.",
-};
+function policyHelp(v: string, t: TFunc): string {
+  switch (v) {
+    case "order": return t("groups.policyHelpOrder");
+    case "rotate": return t("groups.policyHelpRotate");
+    case "usage": return t("groups.policyHelpUsage");
+    case "free_first": return t("groups.policyHelpFreeFirst");
+    case "weight": return t("groups.policyHelpWeight");
+    case "manual": return t("groups.policyHelpManual");
+    default: return "";
+  }
+}
 
 interface Props {
   config: Config | null;
@@ -144,27 +149,27 @@ function orderRuleDays(days: string[]): string[] {
   return [...new Set(days)].sort((a, b) => RULE_DAYS.indexOf(a) - RULE_DAYS.indexOf(b));
 }
 
-function describeRule(rule: RoutingRule, index: number): string {
+function describeRule(rule: RoutingRule, index: number, t: TFunc): string {
   const member = rule.useEffort ? `${rule.use} at ${rule.useEffort}` : rule.use;
   const conds: string[] = [];
-  if ((rule.tokens ?? 0) > 0) conds.push(`tokens ≥ ${rule.tokens}`);
-  if (rule.images) conds.push("images");
-  if (rule.effort === "on") conds.push("reasoning");
-  else if (rule.effort) conds.push(`effort ≥ ${rule.effort}`);
-  if (rule.agents?.length) conds.push(`agent ${rule.agents.join("|")}`);
-  if (rule.intent) conds.push(`intent ${JSON.stringify(rule.intent)}`);
-  if (rule.compact) conds.push("compacting");
+  if ((rule.tokens ?? 0) > 0) conds.push(t("groups.condTokens", { n: rule.tokens ?? 0 }));
+  if (rule.images) conds.push(t("groups.condImages"));
+  if (rule.effort === "on") conds.push(t("groups.condReasoning"));
+  else if (rule.effort) conds.push(t("groups.condEffort", { v: rule.effort }));
+  if (rule.agents?.length) conds.push(t("groups.condAgent", { v: rule.agents.join("|") }));
+  if (rule.intent) conds.push(t("groups.condIntent", { v: JSON.stringify(rule.intent) }));
+  if (rule.compact) conds.push(t("groups.condCompact"));
   if (rule.time) {
     let span = `${rule.time.from}–${rule.time.to}`;
-    if (rule.time.from === rule.time.to) span = "all day";
+    if (rule.time.from === rule.time.to) span = t("groups.allDay");
     if (rule.time.days?.length) span += ` ${rule.time.days.join(",")}`;
-    conds.push(`time ${span}`);
+    conds.push(t("groups.condTime", { v: span }));
   }
-  if (rule.folders?.length) conds.push(`folder ${rule.folders.join("|")}`);
-  if (rule.exceptFolders?.length) conds.push(`not folder ${rule.exceptFolders.join("|")}`);
-  const what = conds.length ? ` when ${conds.join(", ")}` : "";
-  const kind = rule.pause ? "pauses" : "sends first to";
-  return `Rule ${index + 1} ${kind} ${member}${what}`;
+  if (rule.folders?.length) conds.push(t("groups.condFolder", { v: rule.folders.join("|") }));
+  if (rule.exceptFolders?.length) conds.push(t("groups.condNotFolder", { v: rule.exceptFolders.join("|") }));
+  const what = conds.length ? t("groups.ruleWhen", { conds: conds.join(", ") }) : "";
+  const kind = rule.pause ? t("groups.rulePauses") : t("groups.ruleSends");
+  return t("groups.ruleN", { n: index + 1, kind, member: member ?? "", conds: what });
 }
 
 function padClock(value: string): string {
@@ -172,20 +177,20 @@ function padClock(value: string): string {
   return `${hours.padStart(2, "0")}:${minutes}`;
 }
 
-function buildRule(draft: RuleDraft): { rule?: RoutingRule; error?: string } {
+function buildRule(draft: RuleDraft, t: TFunc): { rule?: RoutingRule; error?: string } {
   const use = draft.use.trim();
-  if (!use) return { error: "Pick the member this rule sends first to." };
+  if (!use) return { error: t("groups.errNoUse") };
   const rawTokens = draft.tokens.trim();
   const tokens = rawTokens === "" ? 0 : Number(rawTokens);
   if (!Number.isSafeInteger(tokens) || tokens < 0) {
-    return { error: "Tokens is a whole number of 0 or more; blank means no minimum." };
+    return { error: t("groups.errTokens") };
   }
   const agents = draft.agents
     .split(",")
     .map((agent) => agent.trim().toLowerCase())
     .filter(Boolean);
   const intent = draft.intent.split(/\s+/).filter(Boolean).join(" ");
-  if (intent.length > 200) return { error: "An intent is at most 200 characters." };
+  if (intent.length > 200) return { error: t("groups.errIntentLong") };
   const from = draft.from.trim();
   const to = draft.to.trim();
   const days = draft.days
@@ -193,12 +198,12 @@ function buildRule(draft: RuleDraft): { rule?: RoutingRule; error?: string } {
     .map((day) => day.trim().toLowerCase())
     .filter(Boolean);
   const badDay = days.find((day) => !RULE_DAYS.includes(day));
-  if (badDay) return { error: `Days are mon … sun — not "${badDay}".` };
+  if (badDay) return { error: t("groups.errBadDay", { day: badDay }) };
   if ((from || to || days.length) && (!RULE_CLOCK.test(from) || !RULE_CLOCK.test(to))) {
-    return { error: "Hours are HH:MM each (09:00)." };
+    return { error: t("groups.errClock") };
   }
   if ((from || to) && from === to && days.length === 0) {
-    return { error: "Equal hours cover the whole day, every day: give days or other hours." };
+    return { error: t("groups.errEqualHours") };
   }
   const folders = lines(draft.folders);
   const exceptFolders = lines(draft.exceptFolders);
@@ -216,11 +221,11 @@ function buildRule(draft: RuleDraft): { rule?: RoutingRule; error?: string } {
     exceptFolders.length > 0;
   if (!hasCondition) {
     return {
-      error: "Give the rule a condition (tokens, images, effort, agents, intent, compacting, time or folders).",
+      error: t("groups.errNoCond"),
     };
   }
   if (draft.pause && (tokens > 0 || draft.images || effort || useEffort || intent || draft.compact)) {
-    return { error: "A pause holds by hours, days, agents or folders only." };
+    return { error: t("groups.errPause") };
   }
   const rule: RoutingRule = { use };
   if (tokens > 0) rule.tokens = tokens;
@@ -238,6 +243,7 @@ function buildRule(draft: RuleDraft): { rule?: RoutingRule; error?: string } {
 }
 
 export default function Groups({ config, stats, busy, setBusy, onChanged }: Props) {
+  const t = useT();
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState<{ id: string | null; draft: Draft } | null>(null);
   const [ruleEditing, setRuleEditing] = useState<{ index: number | null; draft: RuleDraft } | null>(null);
@@ -259,15 +265,15 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     if (!current || current === "off") return "";
     const slash = current.indexOf("/");
     if (slash <= 0 || slash === current.length - 1) {
-      return `Image recognition ${current} is not provider/model.`;
+      return t("groups.visionBadFormat", { v: current });
     }
     const provider = providers.find((item) => item.id === current.slice(0, slash));
-    if (!provider) return `Image recognition ${current} is missing.`;
+    if (!provider) return t("groups.visionMissing", { v: current });
     if (provider.capabilities && provider.capabilities.vision === false) {
-      return `Image recognition ${current} takes text only.`;
+      return t("groups.visionTextOnly", { v: current });
     }
     return "";
-  }, [vision, providers]);
+  }, [vision, providers, t]);
 
   async function mutate(
     path: string,
@@ -277,7 +283,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   ): Promise<boolean> {
     if (busy) return false;
     setBusy(true);
-    setMessage(method === "DELETE" ? "Deleting…" : "Saving…");
+    setMessage(method === "DELETE" ? t("groups.deleting") : t("common.saving"));
     try {
       await api.request(path, method, body);
       setMessage(success);
@@ -297,8 +303,8 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       "PUT",
       { on: foundOff },
       foundOff
-        ? "Found groups are on again."
-        : "Found groups are off; only the groups you made or changed are listed.",
+        ? t("groups.foundOn")
+        : t("groups.foundOff"),
     );
     if (ok) onChanged();
   }
@@ -307,11 +313,11 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     if (busy) return;
     const value = vision.trim() === "" ? null : vision.trim();
     setBusy(true);
-    setVisionMessage("Saving…");
+    setVisionMessage(t("groups.visionSaving"));
     try {
       await api.put("/config/vision", { vision: value });
       setVisionMessage(
-        value === null || value === "off" ? "Image recognition is off." : `Image recognition is ${value}.`,
+        value === null || value === "off" ? t("groups.visionOff") : t("groups.visionSet", { v: value }),
       );
       onChanged();
     } catch (err) {
@@ -346,13 +352,13 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     const draft = editing.draft;
     const routes = lines(draft.routes);
     if (!routes.length) {
-      setMessage("Enter at least one provider/model route.");
+      setMessage(t("groups.errNoRoutes"));
       return;
     }
     const stale = draft.rules.find((rule) => !rule.use || !routes.includes(rule.use));
     if (stale) {
       setMessage(
-        `Rule for ${stale.use || "(missing route)"} is not in the group anymore: edit the rules or the routes.`,
+        t("groups.errStale", { use: stale.use || t("groups.missingRoute") }),
       );
       const index = draft.rules.indexOf(stale);
       setRuleEditing({
@@ -379,7 +385,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     const classifier = draft.classifier.trim();
     if (draft.rules.some((rule) => rule.intent) && !classifier) {
       setMessage(
-        "A rule with an intent needs the group's classifier: the model that tells which intent a message is.",
+        t("groups.errNeedClassifier"),
       );
       return;
     }
@@ -390,18 +396,18 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     const unknown = levels.find((level) => !LEVELS.includes(level));
     if (unknown) {
       setMessage(
-        `Offered levels are low, medium, high, xhigh and max — not "${unknown}". Blank offers everything.`,
+        t("groups.errBadLevel", { v: unknown }),
       );
       return;
     }
     const firstToken = draft.firstToken.trim() === "" ? 0 : Number(draft.firstToken);
     if (!Number.isSafeInteger(firstToken) || firstToken < 0) {
-      setMessage("Enter a non-negative whole-number timeout in milliseconds (0 disables).");
+      setMessage(t("groups.errFirstToken"));
       return;
     }
     const patience = draft.patience.trim() === "" ? null : Number(draft.patience);
     if (patience !== null && !Number.isSafeInteger(patience)) {
-      setMessage("Patience is whole seconds: blank takes the 60s default, a negative disables re-asking.");
+      setMessage(t("groups.errPatience"));
       return;
     }
     const body: Record<string, unknown> = {
@@ -422,11 +428,11 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     if (draft.routing === "weight") {
       const weights = lines(draft.weights).map(Number);
       if (weights.some((weight) => !Number.isSafeInteger(weight) || weight < 0 || weight > 1000)) {
-        setMessage("Route weights must be whole numbers from 0 to 1000, one per line.");
+        setMessage(t("groups.errWeights"));
         return;
       }
       if (weights.length > routes.length) {
-        setMessage("Enter at most one weight per route.");
+        setMessage(t("groups.errTooManyWeights"));
         return;
       }
       body.weights = weights;
@@ -436,7 +442,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       path,
       editing.id === null ? "POST" : "PUT",
       body,
-      "Group saved. New requests use these routes immediately.",
+      t("groups.saved"),
     );
     if (ok) {
       setEditing(null);
@@ -449,13 +455,13 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     const current = group.pick || group.routes[0];
     if (busy || member === current) return;
     setBusy(true);
-    setMessage(`Picking ${member}…`);
+    setMessage(t("groups.picking", { m: member }));
     try {
       await api.put(`/config/groups/${encodeURIComponent(group.id)}`, { ...group, pick: member });
-      setMessage(`group/${group.id} now sends every request to ${member}.`);
+      setMessage(t("groups.picked", { id: group.id, m: member }));
       onChanged();
     } catch (err) {
-      setMessage(`Pick failed: ${(err as Error).message}`);
+      setMessage(t("groups.pickFailed", { error: (err as Error).message }));
     } finally {
       setBusy(false);
     }
@@ -464,14 +470,14 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   async function deleteGroup(group: GroupConfig) {
     if (busy) return;
     const what = group.auto
-      ? `Hide found group/${group.id}? It leaves routing and the catalog until brought back.`
-      : `Delete group/${group.id}? Agents using it will need another model.`;
+      ? t("groups.delHide", { id: group.id })
+      : t("groups.delDelete", { id: group.id });
     if (!window.confirm(what)) return;
     const ok = await mutate(
       `/config/groups/${encodeURIComponent(group.id)}`,
       "DELETE",
       null,
-      group.auto ? "Group hidden; bring it back from its card." : "Group deleted and saved.",
+      group.auto ? t("groups.hiddenMsg") : t("groups.deletedMsg"),
     );
     if (ok) onChanged();
   }
@@ -484,7 +490,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       "/config/groups",
       "POST",
       rest,
-      `group/${group.id} is back in routing and the catalog.`,
+      t("groups.backMsg", { id: group.id }),
     );
     if (ok) onChanged();
   }
@@ -518,9 +524,9 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
 
   function saveRule() {
     if (busy || !editing || !ruleEditing) return;
-    const result = buildRule(ruleEditing.draft);
+    const result = buildRule(ruleEditing.draft, t);
     if (!result.rule) {
-      setRuleError(result.error || "Check the rule.");
+      setRuleError(result.error || t("groups.errFallback"));
       return;
     }
     const rules = [...editing.draft.rules];
@@ -560,7 +566,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   const editorForm = draft && editing ? (
     <form className="editor" onSubmit={saveGroup} autoComplete="off">
       <div className="editor-head">
-        <h3>{editing.id === null ? "New routing group" : "Edit routing group"}</h3>
+        <h3>{editing.id === null ? t("groups.newTitle") : t("groups.editTitle")}</h3>
         {editing.id ? <span className="sub"><code>group/{editing.id}</code></span> : null}
       </div>
       <div className="editor-body">
@@ -570,102 +576,102 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
           </Notice>
         ) : null}
 
-            <FormSection title="Identity">
+            <FormSection title={t("groups.secIdentity")}>
               <div className="form-grid">
-                <Field label="Group ID" htmlFor="group-id"
-                  help="Letters, digits, hyphens and underscores. Agents use group/<id>.">
+                <Field label={t("groups.fId")} htmlFor="group-id"
+                  help={t("groups.fIdHelp")}>
                   <input id="group-id" className="input mono" required pattern="[A-Za-z0-9_-]+"
                     placeholder="daily-coding" readOnly={editing.id !== null}
                     value={draft.id} onChange={(e) => patchDraft({ id: e.target.value })} />
                 </Field>
-                <Field label="Display name" htmlFor="group-name" help="Optional.">
+                <Field label={t("groups.fName")} htmlFor="group-name" help={t("groups.fNameHelp")}>
                   <input id="group-name" className="input" placeholder="Daily coding"
                     value={draft.name} onChange={(e) => patchDraft({ name: e.target.value })} />
                 </Field>
               </div>
             </FormSection>
 
-            <FormSection title="Members" description="Routes in fallback order.">
-              <Field label="Routes" htmlFor="group-routes"
-                help="One provider/model per line. The policy chooses the starting route; the rest are fallback candidates. A :level suffix fixes an effort on a member: kimi/moonshot-v1-128k:high asks for high.">
+            <FormSection title={t("groups.secMembers")} description={t("groups.secMembersDesc")}>
+              <Field label={t("groups.fRoutes")} htmlFor="group-routes"
+                help={t("groups.fRoutesHelp")}>
                 <textarea id="group-routes" className="input mono" rows={4} required
                   placeholder={"deepseek/deepseek-chat\nkimi/moonshot-v1-128k"}
                   value={draft.routes} onChange={(e) => patchDraft({ routes: e.target.value })} />
               </Field>
             </FormSection>
 
-            <FormSection title="Policy">
+            <FormSection title={t("groups.secPolicy")}>
               <div className="form-grid">
-                <Field label="Route policy" htmlFor="group-routing" help={POLICY_HELP[draft.routing]}>
+                <Field label={t("groups.fPolicy")} htmlFor="group-routing" help={policyHelp(draft.routing, t)}>
                   <select id="group-routing" className="input"
                     value={draft.routing} onChange={(e) => patchDraft({ routing: e.target.value })}>
-                    <option value="order">Ordered</option>
-                    <option value="rotate">Rotate</option>
-                    <option value="usage">Least used</option>
-                    <option value="free_first">Free first</option>
-                    <option value="weight">Weighted</option>
-                    <option value="manual">Manual</option>
+                    <option value="order">{t("groups.policyOrder")}</option>
+                    <option value="rotate">{t("groups.policyRotate")}</option>
+                    <option value="usage">{t("groups.policyUsage")}</option>
+                    <option value="free_first">{t("groups.policyFreeFirst")}</option>
+                    <option value="weight">{t("groups.policyWeight")}</option>
+                    <option value="manual">{t("groups.policyManual")}</option>
                   </select>
                 </Field>
-                <Field label="Conversation affinity" htmlFor="group-affinity"
-                  help="Keep a conversation on the route that answered it so the vendor's prompt cache keeps hitting. Auto follows the policy: rotate spreads load, everything else sticks by conversation.">
+                <Field label={t("groups.fAffinity")} htmlFor="group-affinity"
+                  help={t("groups.affinityHelp")}>
                   <select id="group-affinity" className="input"
                     value={draft.affinity} onChange={(e) => patchDraft({ affinity: e.target.value })}>
-                    <option value="auto">Auto</option>
-                    <option value="session">Whole session</option>
-                    <option value="turn">Within a turn</option>
-                    <option value="off">Off</option>
+                    <option value="auto">{t("prov.optAuto")}</option>
+                    <option value="session">{t("prov.optSession")}</option>
+                    <option value="turn">{t("prov.optTurn")}</option>
+                    <option value="off">{t("prov.optOff")}</option>
                   </select>
                 </Field>
-                <Field label="Manual pick" htmlFor="group-pick" hidden={draft.routing !== "manual"}
-                  help="One of the routes above, sent every request while the policy is manual. Blank keeps the first route; changing it later is one click on the group card.">
+                <Field label={t("groups.fPick")} htmlFor="group-pick" hidden={draft.routing !== "manual"}
+                  help={t("groups.fPickHelp")}>
                   <input id="group-pick" className="input mono" list="agent-model-options"
                     placeholder="deepseek/deepseek-chat" spellCheck={false}
                     value={draft.pick} onChange={(e) => patchDraft({ pick: e.target.value })} />
                 </Field>
-                <Field label="Route weights" htmlFor="group-weights" hidden={draft.routing !== "weight"}
-                  help="One weight per route, in route order, 0 to 1000. A missing weight counts as 1; 0 makes the route fallback-only.">
+                <Field label={t("groups.fWeights")} htmlFor="group-weights" hidden={draft.routing !== "weight"}
+                  help={t("groups.fWeightsHelp")}>
                   <textarea id="group-weights" className="input mono" rows={3} placeholder={"3\n1\n4"}
                     value={draft.weights} onChange={(e) => patchDraft({ weights: e.target.value })} />
                 </Field>
               </div>
             </FormSection>
 
-            <FormSection title="Timing">
+            <FormSection title={t("groups.secTiming")}>
               <div className="form-grid">
-                <Field label="First-content timeout (ms)" htmlFor="group-first-token"
-                  help="0 disables. Streaming only: a slow non-final route switches to the next candidate before any reply is released. The final route still obeys gateway-wide limits.">
+                <Field label={t("groups.fFirstToken")} htmlFor="group-first-token"
+                  help={t("groups.fFirstTokenHelp")}>
                   <input id="group-first-token" className="input" type="number" min="0"
                     max="9007199254740991" step="1" required
                     value={draft.firstToken} onChange={(e) => patchDraft({ firstToken: e.target.value })} />
                 </Field>
-                <Field label="Busy patience (s)" htmlFor="group-patience"
-                  help="Blank takes 60: while every member is busy, the request waits for a slot and asks again. A negative disables re-asking; above 240 takes 240. A direct provider still fails fast.">
+                <Field label={t("groups.fPatience")} htmlFor="group-patience"
+                  help={t("groups.fPatienceHelp")}>
                   <input id="group-patience" className="input" type="number" min="-9007199254740991"
-                    max="9007199254740991" step="1" placeholder="60"
+                    max="9007199254740991" step="1" placeholder={t("groups.patiencePh")}
                     value={draft.patience} onChange={(e) => patchDraft({ patience: e.target.value })} />
                 </Field>
               </div>
             </FormSection>
 
-            <FormSection title="Reasoning">
+            <FormSection title={t("groups.secReasoning")}>
               <div className="form-grid three">
-                <Field label="Classifier model" htmlFor="group-classifier"
-                  help="Asked which rule intent a turn's message is. Needed when a rule has an intent.">
+                <Field label={t("groups.fClassifier")} htmlFor="group-classifier"
+                  help={t("groups.fClassifierHelp")}>
                   <input id="group-classifier" className="input mono" list="agent-model-options"
                     placeholder="deepseek/deepseek-chat" spellCheck={false}
                     value={draft.classifier} onChange={(e) => patchDraft({ classifier: e.target.value })} />
                 </Field>
-                <Field label="Turn reasoning" htmlFor="group-effort"
-                  help="Judge each turn has the classifier judge how hard the turn is; it needs the classifier model.">
+                <Field label={t("groups.fEffort")} htmlFor="group-effort"
+                  help={t("groups.fEffortHelp")}>
                   <select id="group-effort" className="input"
                     value={draft.effort} onChange={(e) => patchDraft({ effort: e.target.value })}>
-                    <option value="">Agent's choice</option>
-                    <option value="auto">Judge each turn</option>
+                    <option value="">{t("groups.effortChoice")}</option>
+                    <option value="auto">{t("groups.effortAuto")}</option>
                   </select>
                 </Field>
-                <Field label="Offered levels" htmlFor="group-levels"
-                  help="Blank offers everything. e.g. low, high: each ask is sent at the nearest offered, a tie going up; off stays off.">
+                <Field label={t("groups.fLevels")} htmlFor="group-levels"
+                  help={t("groups.fLevelsHelp")}>
                   <input id="group-levels" className="input mono" placeholder="low, high" spellCheck={false}
                     value={draft.levels} onChange={(e) => patchDraft({ levels: e.target.value })} />
                 </Field>
@@ -673,37 +679,37 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
             </FormSection>
 
             <FormSection
-              title="Routing rules"
-              description="A rule sends matching requests to its member first; a pause leaves its member out while its hours, days, agents or folders hold."
+              title={t("groups.secRules")}
+              description={t("groups.secRulesDesc")}
             >
               {draft.rules.length ? (
-                <ol className="rule-list" aria-label="Routing rules">
+                <ol className="rule-list" aria-label={t("groups.ruleAria")}>
                   {draft.rules.map((item, index) => (
                     <li key={index} className={ruleEditing?.index === index ? "editing" : ""}>
                       <span className="step">{index + 1}</span>
-                      <span className="rule-text">{describeRule(item, index)}</span>
-                      <button type="button" className="icon-btn" aria-label={`Edit rule ${index + 1}`}
-                        title="Edit rule" onClick={() => openRule(index)}>
+                      <span className="rule-text">{describeRule(item, index, t)}</span>
+                      <button type="button" className="icon-btn" aria-label={t("groups.editRuleAria", { n: index + 1 })}
+                        title={t("groups.editRule")} onClick={() => openRule(index)}>
                         <Pencil size={14} />
                       </button>
-                      <button type="button" className="icon-btn danger" aria-label={`Delete rule ${index + 1}`}
-                        title="Delete rule" onClick={() => deleteRule(index)}>
+                      <button type="button" className="icon-btn danger" aria-label={t("groups.delRuleAria", { n: index + 1 })}
+                        title={t("groups.delRule")} onClick={() => deleteRule(index)}>
                         <Trash2 size={14} />
                       </button>
                     </li>
                   ))}
                 </ol>
               ) : (
-                <p className="text-muted">No rules: every request follows the policy above.</p>
+                <p className="text-muted">{t("groups.noRules")}</p>
               )}
 
               {rule && ruleEditing ? (
                 <div className="rule-form">
                   <p className="rule-form-title">
-                    {ruleEditing.index === null ? "New rule" : `Rule ${ruleEditing.index + 1}`}
+                    {ruleEditing.index === null ? t("groups.newRule") : t("groups.ruleTitle", { n: ruleEditing.index + 1 })}
                   </p>
-                  <Field label="Send first to" htmlFor="rule-use"
-                    help="One of the routes above, sent first for the requests this rule matches.">
+                  <Field label={t("groups.fSendTo")} htmlFor="rule-use"
+                    help={t("groups.fSendToHelp")}>
                     <select id="rule-use" className="input mono" value={rule.use}
                       onChange={(e) => patchRule({ use: e.target.value })}>
                       <option value=""></option>
@@ -712,46 +718,46 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                       ))}
                     </select>
                   </Field>
-                  <p className="rule-form-sub">When the request matches</p>
+                  <p className="rule-form-sub">{t("groups.whenMatch")}</p>
                   <div className="form-grid four">
-                    <Field label="At least tokens" htmlFor="rule-tokens">
+                    <Field label={t("groups.fTokens")} htmlFor="rule-tokens">
                       <input id="rule-tokens" className="input" type="number" min="0" step="1" placeholder="0"
                         value={rule.tokens} onChange={(e) => patchRule({ tokens: e.target.value })} />
                     </Field>
-                    <Field label="Reasoning asked" htmlFor="rule-effort">
+                    <Field label={t("groups.fReasoning")} htmlFor="rule-effort">
                       <select id="rule-effort" className="input" value={rule.effort}
                         onChange={(e) => patchRule({ effort: e.target.value })}>
-                        <option value="">Any</option>
-                        <option value="on">Any reasoning</option>
+                        <option value="">{t("groups.effortAny")}</option>
+                        <option value="on">{t("groups.effortAnyReasoning")}</option>
                         {RULE_EFFORTS.map((effort) => (
-                          <option key={effort} value={effort}>{effort} or more</option>
+                          <option key={effort} value={effort}>{t("groups.effortOrMore", { v: effort })}</option>
                         ))}
                       </select>
                     </Field>
-                    <Field label="From agents" htmlFor="rule-agents">
+                    <Field label={t("groups.fAgents")} htmlFor="rule-agents">
                       <input id="rule-agents" className="input" placeholder="claude, codex" spellCheck={false}
                         value={rule.agents} onChange={(e) => patchRule({ agents: e.target.value })} />
                     </Field>
-                    <Field label="Intent is" htmlFor="rule-intent">
+                    <Field label={t("groups.fIntent")} htmlFor="rule-intent">
                       <input id="rule-intent" className="input" placeholder="research" spellCheck={false}
                         value={rule.intent} onChange={(e) => patchRule({ intent: e.target.value })} />
                     </Field>
-                    <Field label="Between (HH:MM)" htmlFor="rule-time-from">
+                    <Field label={t("groups.fBetween")} htmlFor="rule-time-from">
                       <input id="rule-time-from" className="input mono" placeholder="22:00" spellCheck={false}
                         value={rule.from} onChange={(e) => patchRule({ from: e.target.value })} />
                     </Field>
-                    <Field label="And (HH:MM)" htmlFor="rule-time-to">
+                    <Field label={t("groups.fAnd")} htmlFor="rule-time-to">
                       <input id="rule-time-to" className="input mono" placeholder="08:00" spellCheck={false}
                         value={rule.to} onChange={(e) => patchRule({ to: e.target.value })} />
                     </Field>
-                    <Field label="On days" htmlFor="rule-days">
+                    <Field label={t("groups.fDays")} htmlFor="rule-days">
                       <input id="rule-days" className="input" placeholder="mon, tue" spellCheck={false}
                         value={rule.days} onChange={(e) => patchRule({ days: e.target.value })} />
                     </Field>
-                    <Field label="Ask it for" htmlFor="rule-use-effort">
+                    <Field label={t("groups.fAskEffort")} htmlFor="rule-use-effort">
                       <select id="rule-use-effort" className="input" value={rule.useEffort}
                         onChange={(e) => patchRule({ useEffort: e.target.value })}>
-                        <option value="">Unchanged</option>
+                        <option value="">{t("groups.effortUnchanged")}</option>
                         {RULE_EFFORTS.map((effort) => (
                           <option key={effort} value={effort}>{effort}</option>
                         ))}
@@ -759,53 +765,52 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                     </Field>
                   </div>
                   <div className="form-grid">
-                    <Field label="Working folder in" htmlFor="rule-folders"
-                      help="One folder per line; a request inside one matches. Blank for anywhere.">
+                    <Field label={t("groups.fFolderIn")} htmlFor="rule-folders"
+                      help={t("groups.fFolderInHelp")}>
                       <textarea id="rule-folders" className="input mono" rows={2} placeholder="/home/user/project"
                         spellCheck={false} value={rule.folders} onChange={(e) => patchRule({ folders: e.target.value })} />
                     </Field>
-                    <Field label="Working folder outside" htmlFor="rule-except-folders">
+                    <Field label={t("groups.fFolderOut")} htmlFor="rule-except-folders">
                       <textarea id="rule-except-folders" className="input mono" rows={2} placeholder="/home/user/scratch"
                         value={rule.exceptFolders} onChange={(e) => patchRule({ exceptFolders: e.target.value })} />
                     </Field>
                   </div>
                   <div className="check-chips">
-                    <label><input type="checkbox" checked={rule.images} onChange={(e) => patchRule({ images: e.target.checked })} /><span>Carries an image</span></label>
-                    <label><input type="checkbox" checked={rule.compact} onChange={(e) => patchRule({ compact: e.target.checked })} /><span>Compacting</span></label>
-                    <label><input type="checkbox" checked={rule.pause} onChange={(e) => patchRule({ pause: e.target.checked })} /><span>Pause this member instead</span></label>
+                    <label><input type="checkbox" checked={rule.images} onChange={(e) => patchRule({ images: e.target.checked })} /><span>{t("groups.chipImage")}</span></label>
+                    <label><input type="checkbox" checked={rule.compact} onChange={(e) => patchRule({ compact: e.target.checked })} /><span>{t("groups.chipCompact")}</span></label>
+                    <label><input type="checkbox" checked={rule.pause} onChange={(e) => patchRule({ pause: e.target.checked })} /><span>{t("groups.chipPause")}</span></label>
                   </div>
                   <p className={`rule-error${ruleError ? " shown" : ""}`} role="status" aria-live="polite">
                     {ruleError}
                   </p>
                   <div className="rule-form-actions">
                     <button type="button" className="btn ghost sm" onClick={() => { setRuleEditing(null); setRuleError(""); }}>
-                      Cancel
+                      {t("common.cancel")}
                     </button>
                     <button type="button" className="btn sm" onClick={saveRule}>
                       <Check size={14} aria-hidden="true" />
-                      Save rule
+                      {t("groups.saveRule")}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button type="button" className="btn dashed" onClick={() => openRule(null)}>
                   <Plus size={14} aria-hidden="true" />
-                  Add rule
+                  {t("groups.addRule")}
                 </button>
               )}
               <p className="help">
-                An intent rule needs the classifier model above. A pause only holds on hours, days,
-                agents or folders.
+                {t("groups.ruleFoot")}
               </p>
             </FormSection>
       </div>
       <div className="editor-foot">
         <button type="button" className="btn ghost" disabled={busy} onClick={closeEditor}>
-          Cancel
+          {t("common.cancel")}
         </button>
         <span className="spacer" />
         <button type="submit" className="btn primary" disabled={busy}>
-          {busy ? "Saving…" : "Save group"}
+          {busy ? t("common.saving") : t("groups.saveGroup")}
         </button>
       </div>
     </form>
@@ -814,17 +819,17 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   return (
     <>
       <PageHeader
-        title="Routing groups"
-        subtitle="Combine models into one route with a policy, fallbacks and rules."
+        title={t("page.groupsTitle")}
+        subtitle={t("page.groupsSub")}
       >
         <button type="button" className="btn primary" disabled={busy} onClick={() => openEditor()}>
           <Plus size={14} aria-hidden="true" />
-          New group
+          {t("groups.new")}
         </button>
       </PageHeader>
 
       <Card
-        title="Gateway-wide settings"
+        title={t("groups.settings")}
         icon={<SlidersHorizontal size={16} />}
         labelledBy="group-settings-title"
       >
@@ -832,12 +837,10 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
           <div className="setting">
             <div className="setting-text">
               <label htmlFor="vision-model">
-                <ImageIcon size={14} aria-hidden="true" /> Image recognition
+                <ImageIcon size={14} aria-hidden="true" /> {t("groups.vision")}
               </label>
               <p>
-                A provider/model describing the images a text-only model is asked about, in their
-                place; off or blank keeps refusing a current user image and omitting the rest. A
-                missing model is named in the refusal.
+                {t("groups.visionDesc")}
               </p>
             </div>
             <div className="setting-control">
@@ -846,14 +849,14 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                   id="vision-model"
                   className="input mono"
                   list="agent-model-options"
-                  placeholder="seeing/model or off"
+                  placeholder={t("groups.visionPh")}
                   spellCheck={false}
                   value={vision}
                   disabled={busy}
                   onChange={(e) => setVision(e.target.value)}
                 />
                 <button type="button" className="btn" disabled={busy} onClick={saveVision}>
-                  Save
+                  {t("groups.visionSave")}
                 </button>
               </div>
               <p
@@ -868,16 +871,15 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
           <div className="setting">
             <div className="setting-text">
               <span className="field-label">
-                <ScanSearch size={14} aria-hidden="true" /> Found groups
+                <ScanSearch size={14} aria-hidden="true" /> {t("groups.found")}
               </span>
               <p>
-                Groups the gateway assembles from your providers on its own. When off, only the
-                groups you made or changed are listed.
+                {t("groups.foundDesc")}
               </p>
             </div>
             <div className="setting-control end">
               <Switch checked={!foundOff} disabled={busy || config === null} onChange={() => toggleFound()}>
-                {foundOff ? "Off" : "On"}
+                {foundOff ? t("common.off") : t("common.on")}
               </Switch>
             </div>
           </div>
@@ -895,8 +897,8 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       {visible.length === 0 ? (
         editing ? null : (
           <Card>
-            <Empty icon={<Waypoints size={18} />} title="No routing groups are configured">
-              A group lets an agent ask for one name and get the best available member.
+            <Empty icon={<Waypoints size={18} />} title={t("groups.emptyTitle")}>
+              {t("groups.emptyCopy")}
             </Empty>
           </Card>
         )
@@ -910,14 +912,14 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
             const failure = group.classifier
               ? stats?.classifier_status?.find((status) => status.model === group.classifier)
               : undefined;
-            const meta: string[] = [`affinity ${group.affinity || "auto"}`];
+            const meta: string[] = [t("groups.metaAffinity", { v: group.affinity || "auto" })];
             if (group.patience_s != null) {
-              meta.push(`patience ${group.patience_s < 0 ? "off" : `${group.patience_s}s`}`);
+              meta.push(group.patience_s < 0 ? t("groups.metaPatienceOff") : t("groups.metaPatience", { n: group.patience_s }));
             }
-            if (group.first_token_timeout_ms) meta.push(`first content ${group.first_token_timeout_ms}ms`);
-            if (group.classifier) meta.push(`classifier ${group.classifier}`);
-            if (group.effort === "auto") meta.push("judges each turn");
-            if ((group.levels ?? []).length) meta.push(`levels ${(group.levels ?? []).join(", ")}`);
+            if (group.first_token_timeout_ms) meta.push(t("groups.metaFirst", { n: group.first_token_timeout_ms }));
+            if (group.classifier) meta.push(t("groups.metaClassifier", { v: group.classifier }));
+            if (group.effort === "auto") meta.push(t("groups.metaJudge"));
+            if ((group.levels ?? []).length) meta.push(t("groups.metaLevels", { v: (group.levels ?? []).join(", ") }));
             const rules = group.rules ?? [];
             return (
               <article key={group.id} className={`group-card${editing?.id === group.id ? " editing" : ""}`}>
@@ -929,8 +931,8 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                         <p>{group.name || group.id}</p>
                       </div>
                       <div className="group-badges">
-                        <Badge tone="accent">{POLICIES[group.routing || "order"] ?? group.routing}</Badge>
-                        {group.auto ? <Badge>Found</Badge> : null}
+                        <Badge tone="accent">{policyLabel(group.routing || "order", t)}</Badge>
+                        {group.auto ? <Badge>{t("groups.found_badge")}</Badge> : null}
                       </div>
                     </header>
                     {editorForm}
@@ -943,8 +945,8 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                         <p>{group.name || group.id}</p>
                       </div>
                       <div className="group-badges">
-                        <Badge tone="accent">{POLICIES[group.routing || "order"] ?? group.routing}</Badge>
-                        {group.auto ? <Badge>Found</Badge> : null}
+                        <Badge tone="accent">{policyLabel(group.routing || "order", t)}</Badge>
+                        {group.auto ? <Badge>{t("groups.found_badge")}</Badge> : null}
                       </div>
                     </header>
 
@@ -959,9 +961,9 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                               <>
                                 <span className="step">{isPicked ? <Check size={10} /> : i + 1}</span>
                                 <code className="member">{member}</code>
-                                {weight !== undefined ? <span className="pill-mini">w {weight}</span> : null}
-                                {free ? <span className="pill-mini good">free</span> : null}
-                                {isPicked ? <span className="pill-mini accent">serving</span> : null}
+                                {weight !== undefined ? <span className="pill-mini">{t("groups.weight", { w: weight })}</span> : null}
+                                {free ? <span className="pill-mini good">{t("groups.free")}</span> : null}
+                                {isPicked ? <span className="pill-mini accent">{t("groups.serving")}</span> : null}
                               </>
                             );
                             return (
@@ -971,8 +973,8 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                                     type="button"
                                     className="member-pick"
                                     disabled={busy || isPicked}
-                                    title={isPicked ? "This member serves every request" : `Send every request to ${member}`}
-                                    aria-label={`Pick ${member} for group ${group.id}`}
+                                    title={isPicked ? t("groups.pickedTitle") : t("groups.pickTitle", { m: member })}
+                                    aria-label={t("groups.pickMember", { m: member, id: group.id })}
                                     onClick={() => pickRoute(group, member)}
                                   >
                                     {body}
@@ -985,23 +987,23 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                           })}
                         </ol>
                       ) : (
-                        <p className="text-muted">No routes</p>
+                        <p className="text-muted">{t("groups.noRoutesCard")}</p>
                       )}
                       <p className="group-meta">{meta.join(" · ")}</p>
                       {rules.length ? (
-                        <ul className="rule-lines" aria-label={`Rules for ${id}`}>
+                        <ul className="rule-lines" aria-label={t("groups.rulesFor", { id })}>
                           {rules.map((item, index) => (
                             <li key={index} className={item.pause ? "pause" : ""}>
                               <ListFilter size={11} aria-hidden="true" />
-                              {describeRule(item, index)}
+                              {describeRule(item, index, t)}
                             </li>
                           ))}
                         </ul>
                       ) : null}
                       {failure ? (
-                        <p className="group-failure" title={`Last failed ask: ${failure.at_unix_ms ?? ""}`}>
+                        <p className="group-failure" title={t("groups.lastFail", { t: String(failure.at_unix_ms ?? "") })}>
                           <CircleAlert size={12} aria-hidden="true" />
-                          {group.classifier} can't say: {(failure.error ?? "").slice(0, 100)}
+                          {t("groups.classifierFail", { model: group.classifier ?? "", error: (failure.error ?? "").slice(0, 100) })}
                         </p>
                       ) : null}
                     </div>
@@ -1009,11 +1011,11 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                     <div className="provider-side">
                       <div className="row-actions">
                         <button type="button" className="icon-btn" disabled={busy}
-                          aria-label={`Edit group ${group.id}`} title="Edit" onClick={() => openEditor(group)}>
+                          aria-label={t("groups.editAria", { id: group.id })} title={t("common.edit")} onClick={() => openEditor(group)}>
                           <Pencil size={14} />
                         </button>
                         <button type="button" className="icon-btn danger" disabled={busy}
-                          aria-label={`Delete group ${group.id}`} title={group.auto ? "Hide" : "Delete"}
+                          aria-label={t("groups.delAria", { id: group.id })} title={group.auto ? t("groups.hideTitle") : t("common.delete")}
                           onClick={() => deleteGroup(group)}>
                           {group.auto ? <EyeOff size={14} /> : <Trash2 size={14} />}
                         </button>
@@ -1029,9 +1031,9 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
 
       {hiddenGroups.length ? (
         <Card
-          title="Hidden found groups"
+          title={t("groups.hiddenTitle")}
           icon={<EyeOff size={16} />}
-          description="Not routed and not listed to agents until brought back."
+          description={t("groups.hiddenDesc")}
           flush
           labelledBy="hidden-groups-title"
         >
@@ -1042,17 +1044,17 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                 <li key={group.id}>
                   <div>
                     <code>{id}</code>
-                    <span className="text-muted">{(group.routes ?? []).join(" → ") || "No routes"}</span>
+                    <span className="text-muted">{(group.routes ?? []).join(" → ") || t("groups.noRoutes")}</span>
                   </div>
                   <button
                     type="button"
                     className="btn sm"
                     disabled={busy}
-                    aria-label={`Bring back group ${group.id}`}
+                    aria-label={t("groups.bringBackAria", { id: group.id })}
                     onClick={() => bringBack(group)}
                   >
                     <Eye size={14} aria-hidden="true" />
-                    Bring back
+                    {t("groups.bringBack")}
                   </button>
                 </li>
               );

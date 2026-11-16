@@ -3,15 +3,16 @@ import { ChartColumn } from "lucide-react";
 import type { Stats } from "../types";
 import { Card, Empty } from "./ui";
 import { fmt } from "../util";
+import { useT, type TFunc } from "../i18n";
 
 const STEPS = [60e3, 5 * 60e3, 15 * 60e3, 60 * 60e3, 6 * 3600e3, 24 * 3600e3];
 const MIN_BARS = 24;
 const MAX_BARS = 48;
 
-function stepLabel(step: number): string {
-  if (step < 3600e3) return `${step / 60e3} min`;
-  if (step < 24 * 3600e3) return `${step / 3600e3} h`;
-  return "day";
+function stepLabel(step: number, t: TFunc): string {
+  if (step < 3600e3) return t("activity.stepMin", { n: step / 60e3 });
+  if (step < 24 * 3600e3) return t("activity.stepHour", { n: step / 3600e3 });
+  return t("activity.stepDay");
 }
 
 function clock(ms: number, step: number): string {
@@ -26,6 +27,7 @@ function quantile(sorted: number[], q: number): number | null {
 }
 
 export default function Activity({ stats }: { stats: Stats | null }) {
+  const t = useT();
   const chart = useMemo(() => {
     const records = stats?.recent_requests ?? [];
     const times = records.map((r) => r.started_unix_ms).filter((t) => t > 0);
@@ -67,14 +69,14 @@ export default function Activity({ stats }: { stats: Stats | null }) {
   return (
     <Card
       className="activity"
-      title="Activity"
+      title={t("activity.title")}
       icon={<ChartColumn size={16} />}
-      description={chart ? `Requests per ${stepLabel(chart.step)}, recent-history window` : "Recent-history window"}
+      description={chart ? t("activity.desc", { step: stepLabel(chart.step, t) }) : t("activity.descEmpty")}
       actions={
         chart ? (
           <div className="legend" aria-hidden="true">
-            <span><i className="swatch ok" />Answered</span>
-            <span><i className="swatch bad" />Failed</span>
+            <span><i className="swatch ok" />{t("activity.answered")}</span>
+            <span><i className="swatch bad" />{t("activity.failed")}</span>
           </div>
         ) : null
       }
@@ -83,12 +85,12 @@ export default function Activity({ stats }: { stats: Stats | null }) {
       {chart ? (
         <>
           <div className="activity-stats">
-            <div><b>{fmt(chart.total)}</b><span>requests</span></div>
-            <div><b className={chart.errors ? "bad" : ""}>{fmt(chart.errors)}</b><span>failed</span></div>
-            <div><b>{chart.p50 == null ? "—" : `${fmt(chart.p50)}`}<small>ms</small></b><span>p50 latency</span></div>
-            <div><b>{chart.p95 == null ? "—" : `${fmt(chart.p95)}`}<small>ms</small></b><span>p95 latency</span></div>
+            <div><b>{fmt(chart.total)}</b><span>{t("activity.requests")}</span></div>
+            <div><b className={chart.errors ? "bad" : ""}>{fmt(chart.errors)}</b><span>{t("activity.failed")}</span></div>
+            <div><b>{chart.p50 == null ? "—" : `${fmt(chart.p50)}`}<small>ms</small></b><span>{t("activity.p50")}</span></div>
+            <div><b>{chart.p95 == null ? "—" : `${fmt(chart.p95)}`}<small>ms</small></b><span>{t("activity.p95")}</span></div>
           </div>
-          <div className="chart" role="img" aria-label={`${chart.total} requests, ${chart.errors} failed, over the last ${chart.bars.length} intervals`}>
+          <div className="chart" role="img" aria-label={t("activity.chartLabel", { total: fmt(chart.total), failed: fmt(chart.errors), n: chart.bars.length })}>
             <div className="chart-grid" aria-hidden="true">
               <span data-label={fmt(chart.peak)} />
               <span data-label={fmt(Math.round(chart.peak / 2))} />
@@ -101,7 +103,7 @@ export default function Activity({ stats }: { stats: Stats | null }) {
                   <div
                     key={bar.at}
                     className="chart-col"
-                    title={`${clock(bar.at, chart.step)} · ${total} requests${bar.bad ? `, ${bar.bad} failed` : ""}`}
+                    title={t("activity.barTitle", { time: clock(bar.at, chart.step), total: fmt(total) }) + (bar.bad ? t("activity.barFailed", { bad: fmt(bar.bad) }) : "")}
                   >
                     <div className="chart-stack" style={{ height: `${(total / chart.peak) * 100}%` }}>
                       {bar.bad ? <span className="seg bad" style={{ flexGrow: bar.bad }} /> : null}
@@ -119,8 +121,8 @@ export default function Activity({ stats }: { stats: Stats | null }) {
           </div>
         </>
       ) : (
-        <Empty icon={<ChartColumn size={18} />} title="No traffic yet">
-          Point an agent at the gateway and its requests chart here.
+        <Empty icon={<ChartColumn size={18} />} title={t("activity.emptyTitle")}>
+          {t("activity.emptyCopy")}
         </Empty>
       )}
     </Card>

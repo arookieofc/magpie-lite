@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleAlert, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import * as api from "./api";
 import type {
   AgentsResponse,
@@ -9,8 +9,12 @@ import type {
   Stats,
   TraceResponse,
 } from "./types";
-import Topbar, { type NavItem, type ThemeChoice, type View } from "./components/Topbar";
-import Metrics from "./components/Metrics";
+import AppShell from "./components/AppShell";
+import Sidebar, { type NavItem, type ThemeChoice, type View } from "./components/Sidebar";
+import TopBar from "./components/TopBar";
+import NoticeBanner from "./components/NoticeBanner";
+import { useT } from "./i18n";
+import StatsGauge from "./components/StatsGauge";
 import Activity from "./components/Activity";
 import Agents from "./components/Agents";
 import ProviderTotals from "./components/ProviderTotals";
@@ -20,10 +24,11 @@ import ProviderConfig from "./components/ProviderConfig";
 import Groups from "./components/Groups";
 import Models from "./components/Models";
 import UsageByModel from "./components/UsageByModel";
-import { Notice, PageHeader } from "./components/ui";
+import { PageHeader } from "./components/ui";
 
 const VIEWS: View[] = ["overview", "agents", "providers", "groups", "requests"];
 const THEME_KEY = "magpie-theme";
+const COLLAPSE_KEY = "magpie-sidenav-collapsed";
 
 function viewFromHash(): View {
   const id = window.location.hash.replace(/^#/, "");
@@ -36,6 +41,14 @@ function storedTheme(): ThemeChoice {
     return value === "light" || value === "dark" ? value : "system";
   } catch {
     return "system";
+  }
+}
+
+function storedCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -71,6 +84,25 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<View>(viewFromHash);
   const [theme, setTheme] = useState<ThemeChoice>(storedTheme);
+  const [collapsed, setCollapsed] = useState(storedCollapsed);
+  const [offlineDismissed, setOfflineDismissed] = useState(false);
+
+  const t = useT();
+  const meta = {
+    overview: { title: t("view.overviewTitle"), subtitle: t("view.overviewSub") },
+    requests: { title: t("view.requestsTitle"), subtitle: t("view.requestsSub") },
+    agents: { title: t("view.agentsTitle"), subtitle: t("view.agentsSub") },
+    providers: { title: t("view.providersTitle"), subtitle: t("view.providersSub") },
+    groups: { title: t("view.groupsTitle"), subtitle: t("view.groupsSub") },
+  }[view];
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  }, [collapsed]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: light)");
@@ -92,7 +124,7 @@ export default function App() {
   useEffect(() => {
     const onHash = () => {
       setView(viewFromHash());
-      document.querySelector(".main")?.scrollTo({ top: 0 });
+      document.querySelector("#main")?.scrollTo({ top: 0 });
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -210,6 +242,10 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    setOfflineDismissed(false);
+  }, [healthy]);
+
   const routeOptions = useMemo(() => {
     const values = new Set<string>();
     for (const provider of data.config?.providers ?? []) {
@@ -230,54 +266,81 @@ export default function App() {
     const recent = data.stats?.recent_requests ?? [];
     const recentErrors = recent.filter((r) => r.status !== "ok").length;
     return [
-      { id: "overview", label: "Overview" },
+      { id: "overview", labelKey: "nav.overview" },
       {
         id: "requests",
-        label: "Requests",
+        labelKey: "nav.requests",
         badge: recent.length ? String(recent.length) : undefined,
         alert: recentErrors > 0,
       },
       {
         id: "agents",
-        label: "Agents",
+        labelKey: "nav.agents",
         badge: agentList.length ? `${connected}/${agentList.length}` : undefined,
         alert: attention,
       },
       {
         id: "providers",
-        label: "Providers",
+        labelKey: "nav.providers",
         badge: data.config ? String(data.config.providers.length) : undefined,
       },
-      { id: "groups", label: "Groups", badge: data.config ? String(groups) : undefined },
+      { id: "groups", labelKey: "nav.groups", badge: data.config ? String(groups) : undefined },
     ];
   }, [data]);
 
   const refreshAll = () => update(false);
 
   return (
-    <div className="app">
-      <Topbar
-        items={nav}
-        view={view}
-        healthy={healthy}
-        lastUpdate={data.lastUpdate}
-        refreshFailed={refreshFailed}
-        autoRefresh={autoRefresh}
-        setAutoRefresh={setAutoRefresh}
-        onRefresh={refreshAll}
-        refreshing={refreshing}
-        busy={busy}
-        theme={theme}
-        setTheme={setTheme}
-      />
-      <main className="main">
+    <AppShell
+      sideNav={
+        <Sidebar
+          items={nav}
+          view={view}
+          lastUpdate={data.lastUpdate}
+          refreshFailed={refreshFailed}
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed((c) => !c)}
+        />
+      }
+      topBar={
+        <TopBar
+          title={meta.title}
+          subtitle={meta.subtitle}
+          healthy={healthy}
+          lastUpdate={data.lastUpdate}
+          refreshFailed={refreshFailed}
+          autoRefresh={autoRefresh}
+          setAutoRefresh={setAutoRefresh}
+          onRefresh={refreshAll}
+          refreshing={refreshing}
+          busy={busy}
+          theme={theme}
+          setTheme={setTheme}
+        />
+      }
+    >
         <div className="main-inner">
+          {healthy === false && !offlineDismissed ? (
+            <NoticeBanner
+              tone="bad"
+              title={t("banner.offlineTitle")}
+              actionLabel={t("common.refresh")}
+              onAction={refreshAll}
+              onDismiss={() => setOfflineDismissed(true)}
+            >
+              {t("banner.offlineBody")}
+            </NoticeBanner>
+          ) : null}
           {message ? (
-            <div role="alert">
-              <Notice tone="bad" icon={<CircleAlert size={16} />}>
-                {message}
-              </Notice>
-            </div>
+            <NoticeBanner
+              tone="warn"
+              title={t("topbar.refreshFailed")}
+              actionLabel={t("common.refresh")}
+              onAction={refreshAll}
+              onDismiss={() => setMessage("")}
+            >
+              {message}
+            </NoticeBanner>
           ) : null}
 
           <datalist id="agent-model-options">
@@ -288,10 +351,10 @@ export default function App() {
 
           <section className="view" hidden={view !== "overview"} aria-label="Overview">
             <PageHeader
-              title="Overview"
-              subtitle="Traffic, live routing decisions and provider health for this gateway process."
+              title={t("page.overviewTitle")}
+              subtitle={t("page.overviewSub")}
             />
-            <Metrics stats={data.stats} />
+            <StatsGauge stats={data.stats} />
             <div className="grid-main-side">
               <Activity stats={data.stats} />
               <ProviderTotals stats={data.stats} />
@@ -300,10 +363,10 @@ export default function App() {
             <UsageByModel stats={data.stats} />
           </section>
 
-          <section className="view" hidden={view !== "requests"} aria-label="Requests">
+          <section className="view" hidden={view !== "requests"} aria-label={t("page.requestsTitle")}>
             <PageHeader
-              title="Requests"
-              subtitle="Every request in the recent-history window, with the route it took."
+              title={t("page.requestsTitle")}
+              subtitle={t("page.requestsSub")}
             />
             <RecentRequests
               stats={data.stats}
@@ -313,12 +376,11 @@ export default function App() {
             />
             <p className="footnote">
               <ShieldCheck size={14} aria-hidden="true" />
-              Request history is secret-free: prompts, replies, upstream API keys and credentials are
-              never included in <code>/stats</code> history.
+              {t("page.secretNote")}
             </p>
           </section>
 
-          <section className="view" hidden={view !== "agents"} aria-label="Coding agents">
+          <section className="view" hidden={view !== "agents"} aria-label={t("page.agentsTitle")}>
             <Agents
               agents={data.agents}
               agentsError={data.agentsError}
@@ -330,12 +392,12 @@ export default function App() {
             />
           </section>
 
-          <section className="view" hidden={view !== "providers"} aria-label="Providers">
+          <section className="view" hidden={view !== "providers"} aria-label={t("page.providersTitle")}>
             <ProviderConfig config={data.config} busy={busy} setBusy={setBusy} onChanged={refreshAll} />
             <Models models={data.models} />
           </section>
 
-          <section className="view" hidden={view !== "groups"} aria-label="Routing groups">
+          <section className="view" hidden={view !== "groups"} aria-label={t("page.groupsTitle")}>
             <Groups
               config={data.config}
               models={data.models}
@@ -346,7 +408,6 @@ export default function App() {
             />
           </section>
         </div>
-      </main>
-    </div>
+    </AppShell>
   );
 }

@@ -16,26 +16,52 @@ import * as api from "../api";
 import type { Config, ProviderConfig as Provider } from "../types";
 import { fmt, formatDuration } from "../util";
 import { Avatar, Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Segmented, Switch } from "./ui";
+import { useT, type TFunc } from "../i18n";
 
-const PROTOCOLS: Record<string, string> = {
-  chat: "OpenAI Chat",
-  responses: "OpenAI Responses",
-  anthropic: "Anthropic Messages",
-  gemini: "Google Gemini",
-};
+function protoLabel(v: string, t: TFunc): string {
+  switch (v) {
+    case "chat": return t("prov.protoChat");
+    case "responses": return t("prov.protoResponses");
+    case "anthropic": return t("prov.protoAnthropic");
+    case "gemini": return t("prov.protoGemini");
+    default: return v;
+  }
+}
+
+function policyLabel(v: string, t: TFunc): string {
+  switch (v) {
+    case "order": return t("prov.optOrder");
+    case "usage": return t("prov.optUsage");
+    case "free_first": return t("prov.optFreeFirst");
+    case "weight": return t("prov.optWeight");
+    case "rotate":
+    default: return t("prov.optRotate");
+  }
+}
+
+function affinityLabel(v: string, t: TFunc): string {
+  switch (v) {
+    case "session": return t("prov.optSession");
+    case "turn": return t("prov.optTurn");
+    case "off": return t("prov.optOff");
+    case "auto":
+    default: return t("prov.optAuto");
+  }
+}
 
 const lines = (v: string) => v.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 const triState = (v?: boolean | null) => (v === true ? "true" : v === false ? "false" : "");
 const boolOrNull = (v: string) => (v === "true" ? true : v === "false" ? false : null);
 
-function routingSummary(p: Provider): string {
+function routingSummary(p: Provider, t: TFunc): string {
   const policy = p.routing || "rotate";
   const affinity = p.affinity || "auto";
-  const limits = (p.key_limits ?? []).length ? ` · limits: ${p.key_limits!.join(", ")}` : "";
-  const pin = p.pin_upstream ? " · pinned" : "";
-  if (policy !== "weight") return `${policy} · affinity: ${affinity}${limits}${pin}`;
-  const weights = (p.weights ?? []).length ? `weight: ${p.weights!.join(", ")}` : "weight";
-  return `${weights} · affinity: ${affinity}${limits}${pin}`;
+  const limits = (p.key_limits ?? []).length ? t("prov.sumLimits", { v: p.key_limits!.join(", ") }) : "";
+  const pin = p.pin_upstream ? t("prov.sumPinned") : "";
+  const aff = t("prov.sumAffinity", { v: affinityLabel(affinity, t) });
+  if (policy !== "weight") return `${policyLabel(policy, t)}${aff}${limits}${pin}`;
+  const weights = (p.weights ?? []).length ? t("prov.sumWeight", { v: p.weights!.join(", ") }) : t("prov.optWeight");
+  return `${weights}${aff}${limits}${pin}`;
 }
 
 interface Draft {
@@ -114,33 +140,33 @@ function draftFrom(p: Provider, isDefault: boolean): Draft {
   };
 }
 
-function mapField(value: string, label: string): { map?: Record<string, number>; error?: string } {
+function mapField(value: string, label: string, t: TFunc): { map?: Record<string, number>; error?: string } {
   const map: Record<string, number> = {};
   for (const line of lines(value)) {
     const at = line.lastIndexOf("=");
     const model = at > 0 ? line.slice(0, at).trim() : "";
     const n = at > 0 ? Number(line.slice(at + 1).trim()) : NaN;
     if (!model || /\s/.test(model) || !Number.isSafeInteger(n) || n <= 0) {
-      return { error: `${label} must be model=number, one per line, with a whole number above zero.` };
+      return { error: t("prov.errMap", { label }) };
     }
     map[model] = n;
   }
   return { map };
 }
 
-function numField(value: string, label: string): { ok: boolean; value: number | null; error?: string } {
+function numField(value: string, label: string, t: TFunc): { ok: boolean; value: number | null; error?: string } {
   if (value === "") return { ok: true, value: null };
   const n = Number(value);
   if (!Number.isSafeInteger(n) || n < 0) {
-    return { ok: false, value: null, error: `${label} must be a non-negative whole number.` };
+    return { ok: false, value: null, error: t("prov.errNum", { label }) };
   }
   return { ok: true, value: n };
 }
 
-function listOfNums(value: string, label: string): { ok: boolean; values: number[]; error?: string } {
+function listOfNums(value: string, label: string, t: TFunc): { ok: boolean; values: number[]; error?: string } {
   const values = lines(value).map(Number);
   if (values.some((v) => !Number.isSafeInteger(v) || v < 0 || v > 1000)) {
-    return { ok: false, values: [], error: `${label} must be whole numbers from 0 to 1000, one per line.` };
+    return { ok: false, values: [], error: t("prov.errNums", { label }) };
   }
   return { ok: true, values };
 }
@@ -153,6 +179,7 @@ interface Props {
 }
 
 export default function ProviderConfig({ config, busy, setBusy, onChanged }: Props) {
+  const t = useT();
   const [editing, setEditing] = useState<string | null | false>(false); // false=closed, null=new, id=edit
   const [draft, setDraft] = useState<Draft>(blankDraft(false));
   const [message, setMessage] = useState("");
@@ -183,21 +210,21 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   }
 
   function buildBody(): Record<string, unknown> | null {
-    const cooldown = numField(draft.cooldown, "Cooldown");
+    const cooldown = numField(draft.cooldown, t("prov.lblCooldown"), t);
     if (!cooldown.ok) return setMessage(cooldown.error!), null;
-    const maxConcurrency = numField(draft.maxConcurrency, "Max concurrency");
+    const maxConcurrency = numField(draft.maxConcurrency, t("prov.lblMaxConc"), t);
     if (!maxConcurrency.ok) return setMessage(maxConcurrency.error!), null;
-    const maxRpm = numField(draft.maxRpm, "Max requests per minute");
+    const maxRpm = numField(draft.maxRpm, t("prov.lblMaxRpm"), t);
     if (!maxRpm.ok) return setMessage(maxRpm.error!), null;
-    const queueLimit = numField(draft.queueLimit, "Queue bound");
+    const queueLimit = numField(draft.queueLimit, t("prov.lblQueueBound"), t);
     if (!queueLimit.ok) return setMessage(queueLimit.error!), null;
-    const queueWait = numField(draft.queueWait, "Queue wait");
+    const queueWait = numField(draft.queueWait, t("prov.lblQueueWait"), t);
     if (!queueWait.ok) return setMessage(queueWait.error!), null;
-    const contexts = mapField(draft.contexts, "Context windows");
+    const contexts = mapField(draft.contexts, t("prov.lblContexts"), t);
     if (!contexts.map) return setMessage(contexts.error!), null;
-    const outputs = mapField(draft.outputs, "Max outputs");
+    const outputs = mapField(draft.outputs, t("prov.lblOutputs"), t);
     if (!outputs.map) return setMessage(outputs.error!), null;
-    const keyLimits = listOfNums(draft.keyLimits, "Per-key limits");
+    const keyLimits = listOfNums(draft.keyLimits, t("prov.lblKeyLimits"), t);
     if (!keyLimits.ok) return setMessage(keyLimits.error!), null;
 
     const supported = [
@@ -237,14 +264,14 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       weights: [],
     };
     if (draft.routing === "weight") {
-      const weights = listOfNums(draft.weights, "Key weights");
+      const weights = listOfNums(draft.weights, t("prov.lblKeyWeights"), t);
       if (!weights.ok) return setMessage(weights.error!), null;
       body.weights = weights.values;
     }
     if (draft.keyMode === "replace") {
       const keys = lines(draft.keys);
       if (!keys.length) {
-        setMessage("Enter a key or choose No upstream authentication.");
+        setMessage(t("prov.needKeys"));
         return null;
       }
       body.api_keys = keys;
@@ -261,7 +288,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     if (!body) return;
     const isNew = editing === null;
     setBusy(true);
-    setMessage("Saving…");
+    setMessage(t("prov.saving"));
     try {
       await api.request(
         isNew ? "/config/providers" : `/config/providers/${encodeURIComponent(editing as string)}`,
@@ -269,7 +296,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         body,
       );
       close();
-      setMessage("Provider saved. New requests use it immediately.");
+      setMessage(t("prov.saved"));
       onChanged();
     } catch (err) {
       setMessage((err as Error).message);
@@ -280,12 +307,12 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
 
   async function remove(p: Provider) {
     if (busy) return;
-    if (!window.confirm(`Delete provider ${p.id}? Remove its group and fallback references first. Agents using it will need another route.`)) return;
+    if (!window.confirm(t("prov.delConfirm", { id: p.id }))) return;
     setBusy(true);
-    setMessage("Deleting…");
+    setMessage(t("prov.deleting"));
     try {
       await api.del(`/config/providers/${encodeURIComponent(p.id)}`);
-      setMessage("Provider deleted and saved.");
+      setMessage(t("prov.deleted"));
       onChanged();
     } catch (err) {
       setMessage((err as Error).message);
@@ -300,11 +327,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     if (!body) return;
     const model = draft.testModel.trim() || (body.models as string[])[0];
     if (operation === "test" && !model) {
-      setMessage("Choose a test model or discover models first.");
+      setMessage(t("prov.needTestModel"));
       return;
     }
     setBusy(true);
-    setMessage(operation === "test" ? "Testing a small generation request…" : "Fetching provider models…");
+    setMessage(operation === "test" ? t("prov.testing") : t("prov.fetching"));
     try {
       const result = await api.post<{ models?: string[]; model?: string; elapsed_ms?: number }>(
         `/config/provider-tools/${operation === "models" ? "models" : "test"}`,
@@ -314,9 +341,9 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         const found = result.models ?? [];
         setDraft((d) => ({ ...d, models: [...new Set([...lines(d.models), ...found])].join("\n") }));
         setDiscovered(found);
-        setMessage(`${found.length} models discovered. Draft updated; click Save provider to persist.`);
+        setMessage(t("prov.discovered", { n: found.length }));
       } else {
-        setMessage(`Connection verified for ${result.model} (${result.elapsed_ms} ms). Configuration was not saved.`);
+        setMessage(t("prov.verified", { model: result.model ?? "", ms: result.elapsed_ms ?? 0 }));
       }
     } catch (err) {
       setMessage((err as Error).message);
@@ -329,9 +356,9 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
 
   const triOptions = (
     <>
-      <option value="">Unknown</option>
-      <option value="true">Yes</option>
-      <option value="false">No</option>
+      <option value="">{t("common.unknown")}</option>
+      <option value="true">{t("common.yes")}</option>
+      <option value="false">{t("common.no")}</option>
     </>
   );
 
@@ -340,7 +367,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   const editorForm = (
     <form className="editor" onSubmit={save} autoComplete="off">
       <div className="editor-head">
-        <h3>{editing === null ? "New provider" : `Edit ${draft.name || draft.id}`}</h3>
+        <h3>{editing === null ? t("prov.new") : t("prov.editTitle", { name: draft.name || draft.id })}</h3>
         {editing !== null ? <span className="sub"><code>{draft.id}</code></span> : null}
       </div>
       <div className="editor-body">
@@ -350,58 +377,58 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           </Notice>
         ) : null}
 
-        <FormSection title="Endpoint" description="How the gateway reaches this provider.">
+        <FormSection title={t("prov.secEndpoint")} description={t("prov.secEndpointDesc")}>
           <div className="form-grid">
-            <Field label="Provider ID" htmlFor="provider-id"
-              help="Letters, digits, hyphens and underscores. Agents use provider/model. The ID group is reserved.">
+            <Field label={t("prov.fId")} htmlFor="provider-id"
+              help={t("prov.fIdHelp")}>
               <input id="provider-id" className="input mono" required pattern="[A-Za-z0-9_-]+"
                 placeholder="deepseek" readOnly={editing !== null}
                 value={draft.id} onChange={(e) => set({ id: e.target.value })} />
             </Field>
-            <Field label="Display name" htmlFor="provider-name" help="Optional.">
+            <Field label={t("prov.fName")} htmlFor="provider-name" help={t("prov.fNameHelp")}>
               <input id="provider-name" className="input" placeholder="DeepSeek"
                 value={draft.name} onChange={(e) => set({ name: e.target.value })} />
             </Field>
-            <Field label="Protocol" htmlFor="provider-protocol">
+            <Field label={t("prov.fProtocol")} htmlFor="provider-protocol">
               <select id="provider-protocol" className="input"
                 value={draft.protocol} onChange={(e) => set({ protocol: e.target.value })}>
-                <option value="chat">OpenAI Chat Completions</option>
-                <option value="responses">OpenAI Responses</option>
-                <option value="anthropic">Anthropic Messages</option>
-                <option value="gemini">Google Gemini</option>
+                <option value="chat">{t("prov.protoChat")}</option>
+                <option value="responses">{t("prov.protoResponses")}</option>
+                <option value="anthropic">{t("prov.protoAnthropic")}</option>
+                <option value="gemini">{t("prov.protoGemini")}</option>
               </select>
             </Field>
-            <Field label="Base URL" htmlFor="provider-url"
-              help="Chat and Responses: include /v1. Anthropic: host root. Gemini: include /v1beta.">
+            <Field label={t("prov.fUrl")} htmlFor="provider-url"
+              help={t("prov.fUrlHelp")}>
               <input id="provider-url" className="input mono" type="url" required
                 placeholder="https://api.example.com/v1"
                 value={draft.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} />
             </Field>
           </div>
           <fieldset className="choice-field">
-            <legend>Supported protocols</legend>
+            <legend>{t("prov.caps")}</legend>
             <div className="check-chips">
               <label><input type="checkbox" checked={draft.capChat} onChange={(e) => set({ capChat: e.target.checked })} /><span>Chat</span></label>
               <label><input type="checkbox" checked={draft.capResponses} onChange={(e) => set({ capResponses: e.target.checked })} /><span>Responses</span></label>
               <label><input type="checkbox" checked={draft.capAnthropic} onChange={(e) => set({ capAnthropic: e.target.checked })} /><span>Anthropic</span></label>
               <label><input type="checkbox" checked={draft.capGemini} onChange={(e) => set({ capGemini: e.target.checked })} /><span>Gemini</span></label>
             </div>
-            <p className="help">Select every wire protocol this provider accepts. The configured protocol is included automatically.</p>
+            <p className="help">{t("prov.capsHelp")}</p>
           </fieldset>
           <div className="form-grid three">
-            <Field label="Streaming" htmlFor="provider-cap-streaming">
+            <Field label={t("prov.capStreaming")} htmlFor="provider-cap-streaming">
               <select id="provider-cap-streaming" className="input"
                 value={draft.capStreaming} onChange={(e) => set({ capStreaming: e.target.value })}>
                 {triOptions}
               </select>
             </Field>
-            <Field label="Tools / function calling" htmlFor="provider-cap-tools">
+            <Field label={t("prov.capTools")} htmlFor="provider-cap-tools">
               <select id="provider-cap-tools" className="input"
                 value={draft.capTools} onChange={(e) => set({ capTools: e.target.value })}>
                 {triOptions}
               </select>
             </Field>
-            <Field label="Vision / multimodal" htmlFor="provider-cap-vision">
+            <Field label={t("prov.capVision")} htmlFor="provider-cap-vision">
               <select id="provider-cap-vision" className="input"
                 value={draft.capVision} onChange={(e) => set({ capVision: e.target.value })}>
                 {triOptions}
@@ -409,37 +436,37 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
             </Field>
           </div>
           <Switch checked={draft.makeDefault} onChange={(v) => set({ makeDefault: v })}>
-            Make default provider
+            {t("prov.makeDefault")}
           </Switch>
         </FormSection>
 
-        <FormSection title="Models" description="Listed models appear in the agent catalog; explicit provider/model routes also work for unlisted models.">
-          <Field label="Model IDs" htmlFor="provider-models" help="One upstream model ID per line.">
+        <FormSection title={t("prov.secModels")} description={t("prov.secModelsDesc")}>
+          <Field label={t("prov.fModels")} htmlFor="provider-models" help={t("prov.fModelsHelp")}>
             <textarea id="provider-models" className="input mono" rows={4} placeholder={"deepseek-chat\ndeepseek-reasoner"}
               value={draft.models} onChange={(e) => set({ models: e.target.value })} />
           </Field>
           <div className="form-grid">
-            <Field label="Context windows" htmlFor="provider-contexts" help="Optional. One model=window in tokens per line.">
+            <Field label={t("prov.fContexts")} htmlFor="provider-contexts" help={t("prov.fContextsHelp")}>
               <textarea id="provider-contexts" className="input mono" rows={3} placeholder={"deepseek-chat=131072\ndeepseek-reasoner=65536"}
                 value={draft.contexts} onChange={(e) => set({ contexts: e.target.value })} />
             </Field>
-            <Field label="Max outputs" htmlFor="provider-outputs" help="Optional. One model=limit in tokens per line.">
+            <Field label={t("prov.fOutputs")} htmlFor="provider-outputs" help={t("prov.fOutputsHelp")}>
               <textarea id="provider-outputs" className="input mono" rows={3} placeholder={"claude-sonnet-4-5=32000\ngpt-5-mini=16384"}
                 value={draft.outputs} onChange={(e) => set({ outputs: e.target.value })} />
             </Field>
-            <Field label="Free models" htmlFor="provider-free-models" help="Optional. Served at no cost, for Free first routing.">
+            <Field label={t("prov.fFree")} htmlFor="provider-free-models" help={t("prov.fFreeHelp")}>
               <textarea id="provider-free-models" className="input mono" rows={3} placeholder={"deepseek-v4.1-flash\nglm-5.3"}
                 value={draft.freeModels} onChange={(e) => set({ freeModels: e.target.value })} />
             </Field>
-            <Field label="Fallback routes" htmlFor="provider-fallback" help="Optional. One route per line, tried in order.">
+            <Field label={t("prov.fFallback")} htmlFor="provider-fallback" help={t("prov.fFallbackHelp")}>
               <textarea id="provider-fallback" className="input mono" rows={3} placeholder={"backup/model\ngroup/daily"}
                 value={draft.fallback} onChange={(e) => set({ fallback: e.target.value })} />
             </Field>
           </div>
-          <Field label="Test model" htmlFor="provider-test-model"
-            help="Discovery appends model IDs to this draft. Testing sends a small generation request (up to 64 output tokens) and may incur provider charges.">
+          <Field label={t("prov.fTestModel")} htmlFor="provider-test-model"
+            help={t("prov.fTestModelHelp")}>
             <input id="provider-test-model" className="input mono" list="provider-discovered-models"
-              placeholder="First listed model"
+              placeholder={t("prov.testPh")}
               value={draft.testModel} onChange={(e) => set({ testModel: e.target.value })} />
             <datalist id="provider-discovered-models">
               {discovered.map((m) => <option key={m} value={m} />)}
@@ -447,91 +474,91 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           </Field>
         </FormSection>
 
-        <FormSection title="Credentials" description="Saved keys are never displayed.">
+        <FormSection title={t("prov.secCreds")} description={t("prov.secCredsDesc")}>
           <Segmented
-            label="API keys"
+            label={t("prov.keysLabel")}
             value={draft.keyMode}
             onChange={(value) => set({ keyMode: value })}
             options={[
-              { value: "keep", label: "Keep existing keys", disabled: editing === null },
-              { value: "replace", label: "Replace key pool" },
-              { value: "clear", label: "No upstream auth" },
+              { value: "keep", label: t("prov.keepKeys"), disabled: editing === null },
+              { value: "replace", label: t("prov.replaceKeys") },
+              { value: "clear", label: t("prov.noAuthOpt") },
             ]}
           />
-          <p className="help">Choose Replace to rotate credentials, or No upstream auth for a local service.</p>
+          <p className="help">{t("prov.keysHelp")}</p>
           {showKeys ? (
-            <Field label="New key pool" htmlFor="provider-keys" help="One API key per line, in rotation order.">
+            <Field label={t("prov.newKeys")} htmlFor="provider-keys" help={t("prov.newKeysHelp")}>
               <textarea id="provider-keys" className="input mono secret" rows={3} autoComplete="off" spellCheck={false}
                 value={draft.keys} onChange={(e) => set({ keys: e.target.value })} />
             </Field>
           ) : null}
         </FormSection>
 
-        <FormSection title="Key routing" description="How requests spread across the key pool.">
+        <FormSection title={t("prov.secKeyRouting")} description={t("prov.secKeyRoutingDesc")}>
           <div className="form-grid">
-            <Field label="Key routing" htmlFor="provider-routing">
+            <Field label={t("prov.fKeyRouting")} htmlFor="provider-routing">
               <select id="provider-routing" className="input"
                 value={draft.routing} onChange={(e) => set({ routing: e.target.value })}>
-                <option value="rotate">Rotate</option>
-                <option value="order">Ordered</option>
-                <option value="usage">Least used</option>
-                <option value="free_first">Free first</option>
-                <option value="weight">Weighted</option>
+                <option value="rotate">{t("prov.optRotate")}</option>
+                <option value="order">{t("prov.optOrder")}</option>
+                <option value="usage">{t("prov.optUsage")}</option>
+                <option value="free_first">{t("prov.optFreeFirst")}</option>
+                <option value="weight">{t("prov.optWeight")}</option>
               </select>
             </Field>
-            <Field label="Conversation affinity" htmlFor="provider-affinity">
+            <Field label={t("prov.fAffinity")} htmlFor="provider-affinity">
               <select id="provider-affinity" className="input"
                 value={draft.affinity} onChange={(e) => set({ affinity: e.target.value })}>
-                <option value="auto">Auto</option>
-                <option value="session">Whole session</option>
-                <option value="turn">Within a turn</option>
-                <option value="off">Off</option>
+                <option value="auto">{t("prov.optAuto")}</option>
+                <option value="session">{t("prov.optSession")}</option>
+                <option value="turn">{t("prov.optTurn")}</option>
+                <option value="off">{t("prov.optOff")}</option>
               </select>
             </Field>
             {draft.routing === "weight" ? (
-              <Field label="Key weights" htmlFor="provider-weights"
-                help="One weight per key slot, in pool order, 0-1000. Missing or 0 counts as 1.">
+              <Field label={t("prov.fWeights")} htmlFor="provider-weights"
+                help={t("prov.fWeightsHelp")}>
                 <textarea id="provider-weights" className="input mono" rows={3} placeholder={"3\n1\n4"}
                   value={draft.weights} onChange={(e) => set({ weights: e.target.value })} />
               </Field>
             ) : null}
-            <Field label="Per-key concurrency limits" htmlFor="provider-limits"
-              help="Optional. One per key slot, 0-1000 (0 for no limit). A missing entry takes Max concurrency.">
+            <Field label={t("prov.fKeyLimits")} htmlFor="provider-limits"
+              help={t("prov.fKeyLimitsHelp")}>
               <textarea id="provider-limits" className="input mono" rows={3} placeholder={"5\n2"}
                 value={draft.keyLimits} onChange={(e) => set({ keyLimits: e.target.value })} />
             </Field>
           </div>
           <Switch checked={draft.pinUpstream} onChange={(v) => set({ pinUpstream: v })}>
-            Pin DeepSeek and GLM models to their own API
+            {t("prov.pin")}
           </Switch>
         </FormSection>
 
-        <FormSection title="Limits and queueing" description="Leave blank for no limit.">
+        <FormSection title={t("prov.secLimits")} description={t("prov.secLimitsDesc")}>
           <div className="form-grid">
-            <Field label="Key cooldown (ms)" htmlFor="provider-cooldown"
-              help="Blank inherits the gateway default. 0 disables cooldown.">
+            <Field label={t("prov.fCooldown")} htmlFor="provider-cooldown"
+              help={t("prov.fCooldownHelp")}>
               <input id="provider-cooldown" className="input" type="number" min="0" step="1"
-                placeholder="Gateway default"
+                placeholder={t("prov.cooldownPh")}
                 value={draft.cooldown} onChange={(e) => set({ cooldown: e.target.value })} />
             </Field>
-            <Field label="Max concurrency per key" htmlFor="provider-max-concurrency">
+            <Field label={t("prov.fMaxConc")} htmlFor="provider-max-concurrency">
               <input id="provider-max-concurrency" className="input" type="number" min="0" step="1"
-                placeholder="No limit"
+                placeholder={t("prov.noLimit")}
                 value={draft.maxConcurrency} onChange={(e) => set({ maxConcurrency: e.target.value })} />
             </Field>
-            <Field label="Max requests per minute per key" htmlFor="provider-max-rpm">
+            <Field label={t("prov.fMaxRpm")} htmlFor="provider-max-rpm">
               <input id="provider-max-rpm" className="input" type="number" min="0" step="1"
-                placeholder="No limit"
+                placeholder={t("prov.noLimit")}
                 value={draft.maxRpm} onChange={(e) => set({ maxRpm: e.target.value })} />
             </Field>
-            <Field label="Queue bound per key" htmlFor="provider-queue-limit">
+            <Field label={t("prov.fQueueLimit")} htmlFor="provider-queue-limit">
               <input id="provider-queue-limit" className="input" type="number" min="0" step="1"
-                placeholder="No bound"
+                placeholder={t("prov.noBound")}
                 value={draft.queueLimit} onChange={(e) => set({ queueLimit: e.target.value })} />
             </Field>
-            <Field label="Queue wait (s)" htmlFor="provider-queue-wait">
+            <Field label={t("prov.fQueueWait")} htmlFor="provider-queue-wait">
               <input id="provider-queue-wait" className="input" type="number" min="0" step="1"
-                placeholder="As long as it takes"
+                placeholder={t("prov.waitPh")}
                 value={draft.queueWait} onChange={(e) => set({ queueWait: e.target.value })} />
             </Field>
           </div>
@@ -539,19 +566,19 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       </div>
       <div className="editor-foot">
         <button type="button" className="btn ghost" onClick={close} disabled={busy}>
-          Cancel
+          {t("common.cancel")}
         </button>
         <span className="spacer" />
         <button type="button" className="btn" onClick={() => tool("models")} disabled={busy}>
           <ScanSearch size={14} aria-hidden="true" />
-          Discover models
+          {t("prov.discover")}
         </button>
         <button type="button" className="btn" onClick={() => tool("test")} disabled={busy}>
           <FlaskConical size={14} aria-hidden="true" />
-          Test connection
+          {t("prov.testConn")}
         </button>
         <button type="submit" className="btn primary" disabled={busy}>
-          {busy ? "Saving…" : "Save provider"}
+          {busy ? t("prov.saving") : t("prov.saveProvider")}
         </button>
       </div>
     </form>
@@ -560,12 +587,12 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   return (
     <>
       <PageHeader
-        title="Providers"
-        subtitle="Upstream endpoints, keys, limits and the models each one serves."
+        title={t("page.providersTitle")}
+        subtitle={t("page.providersSub")}
       >
         <button type="button" className="btn primary" onClick={openNew} disabled={busy}>
           <Plus size={14} aria-hidden="true" />
-          New provider
+          {t("prov.new")}
         </button>
       </PageHeader>
 
@@ -580,8 +607,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       {providers.length === 0 ? (
         editing === false ? (
           <Card>
-            <Empty icon={<Server size={18} />} title="No providers are configured">
-              Add an upstream endpoint and its keys to start routing requests.
+            <Empty icon={<Server size={18} />} title={t("prov.emptyTitle")}>
+              {t("prov.emptyCopy")}
             </Empty>
           </Card>
         ) : null
@@ -602,12 +629,12 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                       <div className="provider-title">
                         <h3>
                           {p.name || p.id}
-                          {isDefault ? <Badge tone="accent">Default</Badge> : null}
+                          {isDefault ? <Badge tone="accent">{t("prov.default")}</Badge> : null}
                         </h3>
                         <p>
                           <code>{p.id}</code>
                           <span className="sep">·</span>
-                          {PROTOCOLS[p.protocol] ?? p.protocol}
+                          {protoLabel(p.protocol, t)}
                         </p>
                       </div>
                     </header>
@@ -620,12 +647,12 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                       <div className="provider-title">
                         <h3>
                           {p.name || p.id}
-                          {isDefault ? <Badge tone="accent">Default</Badge> : null}
+                          {isDefault ? <Badge tone="accent">{t("prov.default")}</Badge> : null}
                         </h3>
                         <p>
                           <code>{p.id}</code>
                           <span className="sep">·</span>
-                          {PROTOCOLS[p.protocol] ?? p.protocol}
+                          {protoLabel(p.protocol, t)}
                         </p>
                       </div>
                     </header>
@@ -635,11 +662,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                         {shown.map((m) => (
                           <li key={m} className="chip mono">
                             {m}
-                            {free.has(m) ? <span className="chip-tag">free</span> : null}
+                            {free.has(m) ? <span className="chip-tag">{t("prov.freeTag")}</span> : null}
                           </li>
                         ))}
-                        {more > 0 ? <li className="chip more">+{more} more</li> : null}
-                        {shown.length === 0 ? <li className="chip more">No listed models</li> : null}
+                        {more > 0 ? <li className="chip more">{t("prov.more", { n: more })}</li> : null}
+                        {shown.length === 0 ? <li className="chip more">{t("prov.noModels")}</li> : null}
                       </ul>
                       <footer className="caps">
                         {(caps?.supported_protocols ?? [p.protocol]).map((proto) => (
@@ -649,8 +676,9 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                           const v = caps?.[name];
                           const state = v === true ? "yes" : v === false ? "no" : "unknown";
                           const Icon = v === true ? Check : v === false ? X : CircleHelp;
+                          const stateLabel = v === true ? t("common.yes") : v === false ? t("common.no") : t("common.unknown");
                           return (
-                            <span key={name} className={`cap ${state}`} title={`${name}: ${state}`}>
+                            <span key={name} className={`cap ${state}`} title={`${name}: ${stateLabel}`}>
                               <Icon size={10} aria-hidden="true" />
                               {name}
                             </span>
@@ -661,29 +689,29 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                     <div className="provider-side">
                       <dl className="facts">
                         <div>
-                          <dt><KeyRound size={11} aria-hidden="true" /> Keys</dt>
-                          <dd>{p.credential_count === 0 ? "No auth" : `${fmt(p.key_count)}`}</dd>
+                          <dt><KeyRound size={11} aria-hidden="true" /> {t("prov.keys")}</dt>
+                          <dd>{p.credential_count === 0 ? t("prov.noAuth") : `${fmt(p.key_count)}`}</dd>
                         </div>
                         <div>
-                          <dt>Routing</dt>
-                          <dd>{routingSummary(p)}</dd>
+                          <dt>{t("prov.routing")}</dt>
+                          <dd>{routingSummary(p, t)}</dd>
                         </div>
                         <div>
-                          <dt>Cooldown</dt>
+                          <dt>{t("prov.cooldown")}</dt>
                           <dd>{formatDuration(p.key_cooldown_ms)}</dd>
                         </div>
                         <div>
-                          <dt>Fallback</dt>
-                          <dd>{(p.fallback ?? []).length ? (p.fallback ?? []).join(" → ") : "—"}</dd>
+                          <dt>{t("prov.fallback")}</dt>
+                          <dd>{(p.fallback ?? []).length ? (p.fallback ?? []).join(" → ") : t("prov.noFallback")}</dd>
                         </div>
                       </dl>
                       <div className="row-actions">
                         <button type="button" className="icon-btn" disabled={busy}
-                          aria-label={`Edit provider ${p.id}`} title="Edit" onClick={() => openEdit(p)}>
+                          aria-label={t("prov.editAria", { id: p.id })} title={t("prov.editTitle_attr")} onClick={() => openEdit(p)}>
                           <Pencil size={14} />
                         </button>
                         <button type="button" className="icon-btn danger" disabled={busy}
-                          aria-label={`Delete provider ${p.id}`} title="Delete" onClick={() => remove(p)}>
+                          aria-label={t("prov.delAria", { id: p.id })} title={t("prov.delTitle_attr")} onClick={() => remove(p)}>
                           <Trash2 size={14} />
                         </button>
                       </div>
