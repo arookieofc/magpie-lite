@@ -737,14 +737,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         ) : null}
 
         {pairShown ? (
-          <Field
-            label={t("prov.region")}
-            help={(pairShown.find((p) => p.id === preset?.id)?.chat ||
-              pairShown.find((p) => p.id === preset?.id)?.responses ||
-              pairShown.find((p) => p.id === preset?.id)?.anthropic ||
-              pairShown.find((p) => p.id === preset?.id)?.gemini ||
-              "")}
-          >
+          <Field label={t("prov.region")}>
             <Segmented
               label={t("prov.region")}
               value={preset?.id ?? ""}
@@ -752,10 +745,18 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                 const next = pairShown.find((p) => p.id === id);
                 if (next) switchPair(next);
               }}
-              options={pairShown.map((p) => ({
-                value: p.id,
-                label: p.id.endsWith("-cn") ? t("add.china") : t("add.global"),
-              }))}
+              options={pairShown.map((p) => {
+                const url = p.chat || p.responses || p.anthropic || p.gemini || "";
+                const host = url ? hostOf(url) : p.id;
+                const added = providers.some(
+                  (pv) => pv.base_url && url && hostOf(pv.base_url) === host,
+                );
+                return {
+                  value: p.id,
+                  label: p.id.endsWith("-cn") ? t("add.china") : t("add.global"),
+                  title: `${p.id.endsWith("-cn") ? t("add.china") : t("add.global")} ${host}${added ? ` · ${t("add.addedNote")}` : ""}`,
+                };
+              })}
             />
           </Field>
         ) : null}
