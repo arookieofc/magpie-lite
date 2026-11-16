@@ -718,6 +718,9 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   const editingProvider = typeof editing === "string"
     ? (providers.find((p) => p.id === editing) ?? null)
     : null;
+  // Live count for the key pool box, matching the custom dialog's hint:
+  // keys come one a line or separated by commas.
+  const poolKeyCount = splitKeys(draft.keys).length;
   const editorForm = (
     <form className="editor" onSubmit={save} autoComplete="off">
       <div className="editor-head">
@@ -881,6 +884,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
             <Field label={t("prov.newKeys")} htmlFor="provider-keys" help={t("prov.newKeysHelp")}>
               <textarea id="provider-keys" className="input mono secret" rows={3} autoComplete="off" spellCheck={false}
                 value={draft.keys} onChange={(e) => set({ keys: e.target.value })} />
+              {poolKeyCount > 1 ? (
+                <p className="help" role="status" title={t("prov.keysCountTitle", { n: poolKeyCount })}>
+                  {t("prov.nKeys", { n: poolKeyCount })}
+                </p>
+              ) : null}
             </Field>
           ) : null}
         </FormSection>
