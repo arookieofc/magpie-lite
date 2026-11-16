@@ -268,6 +268,7 @@ export interface VendorPreset {
   note?: string;
   pair?: string;
   icon?: string | null;
+  keys_url?: string;
 }
 
 export interface TraceResponse {
