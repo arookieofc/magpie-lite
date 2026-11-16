@@ -25,3 +25,6 @@ toml.workspace = true
 tempfile = "3"
 tracing.workspace = true
 url = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

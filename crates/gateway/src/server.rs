@@ -1003,11 +1003,78 @@ fn busy(status: reqwest::StatusCode, body: &Value) -> bool {
                 && !edge_blocked(body)
                 && !context_overflowed(code, body)
         }
-        // A 429 naming the plan's credit or a spent balance stands; a
-        // short rate limit may be over in a moment.
-        429 => !credit_words().is_match(&body.to_string().to_lowercase()),
+        // A 429 naming the plan's credit or a spent balance stands;
+        // a short rate limit may be over in a moment. One that names a
+        // window of a minute or less, or says it is back within the
+        // longest patience, is a rate limit however it calls itself
+        // (the reference's `minuteLimit`/`backSoon`, d83f887a/df64b625).
+        429 => {
+            let text = body.to_string().to_lowercase();
+            !credit_words().is_match(&text) || minute_limit(&text) || back_soon(&text)
+        }
         _ => false,
     }
+}
+
+/// The longest a refusal may say it is back in for a 429 to be a rate
+/// limit waited out, not a plan used up: as long as a provider's
+/// patience can be set to wait (the reference's `soonest`,
+/// PatienceLongest).
+const SOONEST_S: u64 = 240;
+
+/// A 429 whose words name a limit per minute or less — tokens or
+/// requests per minute, TPM, RPM — and nothing longer or spent beside
+/// it: no longer window (`long_words`), no balance spent
+/// (`credit_words`, `insufficient_quota`). Words in a URL don't count
+/// (the reference's `minuteWords`/`longWords`/`urlWords`/`minuteLimit`,
+/// d83f887a).
+fn minute_limit(text: &str) -> bool {
+    minute_words().is_match(text) && !long_words().is_match(text) && !credit_words().is_match(text)
+}
+
+fn minute_words() -> &'static Regex {
+    static WORDS: OnceLock<Regex> = OnceLock::new();
+    WORDS.get_or_init(|| {
+        Regex::new(
+            r"(?i)per.?(second|minute)|per.?(sec|min)\b|\b[rt]p[ms]\b|(token|call|request) rate limit|每分钟|每秒",
+        )
+        .expect("minute words regex")
+    })
+}
+
+fn long_words() -> &'static Regex {
+    static WORDS: OnceLock<Regex> = OnceLock::new();
+    WORDS.get_or_init(|| {
+        Regex::new(
+            r"(?i)usage.?limit|hit your .*limit|limit.{0,24}resets|per.?(hour|day|week|month)|\bhours?\b|hourly|daily|weekly|monthly|\b[rt]p[dh]\b|额度已用|用量|套餐|限额已用完|小时|每天|每日|每周|每月",
+        )
+        .expect("long words regex")
+    })
+}
+
+/// A refusal that says in seconds, or in Chinese minutes, how long until
+/// it is back: "try again in 30 seconds", "retry after 20s", "resets in
+/// 45 secs", "请 1 分钟后重试", "30秒后再试" (the reference's
+/// `soonWords`, df64b625).
+fn back_soon(text: &str) -> bool {
+    soon_after(text).is_some_and(|d| d > 0 && d <= SOONEST_S)
+}
+
+fn soon_after(text: &str) -> Option<u64> {
+    static SOON: OnceLock<Regex> = OnceLock::new();
+    let re = SOON.get_or_init(|| {
+        Regex::new(
+            r"(?i)\b(?:resets? (?:in|after)|try again in|retry (?:in|after))\s*(\d+(?:\.\d+)?)\s*(?:s|secs?|seconds?)\b|(\d+)\s*(秒|分钟)钟?\s*(?:之?后)",
+        )
+        .expect("soon words regex")
+    });
+    let m = re.captures(text)?;
+    if let Some(n) = m.get(1).and_then(|v| v.as_str().parse::<f64>().ok()) {
+        return Some(n as u64);
+    }
+    let n: u64 = m.get(2)?.as_str().parse().ok()?;
+    let unit = m.get(3)?.as_str();
+    Some(if unit == "分钟" { n * 60 } else { n })
 }
 
 /// How a vendor says the money is gone, not that the moment is busy

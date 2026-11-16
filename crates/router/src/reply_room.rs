@@ -44,6 +44,19 @@ pub fn reply_left(message: &str) -> Option<u64> {
         // "at least N input tokens".
         let prompt = captured(parts.get(2)).or_else(|| captured(parts.get(3)));
         (window, prompt)
+    } else if let Some(parts) = router_window().captures(message) {
+        // OpenRouter counts the reply in the window and splits the
+        // prompt by kind: every "N of <kind> input" sums to the prompt.
+        let window = captured(parts.get(1));
+        let prompt = parts
+            .get(2)
+            .map(|inside| {
+                router_input()
+                    .captures_iter(inside.as_str())
+                    .filter_map(|m| captured(m.get(1)))
+                    .sum()
+            });
+        (window, prompt)
     } else {
         let parts = input_plus_reply().captures(message)?;
         (captured(parts.get(2)), captured(parts.get(1)))
@@ -78,6 +91,32 @@ fn input_plus_reply() -> &'static Regex {
             "(?i)input length and[^\n]*?max_tokens[^\n]*? exceed context limit:\\s*(\\d+)\\s*\\+\\s*\\d+\\s*>\\s*(\\d+)",
         )
         .expect("the input-plus-reply regex")
+    })
+}
+
+/// OpenRouter's window refusal, which splits the prompt by kind and
+/// counts the reply in the window: "This endpoint's maximum context
+/// length is 1048576 tokens. However, you requested about 1050086 tokens
+/// (101187 of text input, 5181 of tool input, 943718 in the output)".
+/// Group 1 is the window; group 2 is the parenthesis read by
+/// `router_input`. (the reference's `routerWindow`/`routerInput`,
+/// 848269fc)
+fn router_window() -> &'static Regex {
+    static ROUTER_WINDOW: OnceLock<Regex> = OnceLock::new();
+    ROUTER_WINDOW.get_or_init(|| {
+        Regex::new(
+            r"(?is)maximum context length is (\d+) tokens\..{0,100}?requested about \d+ tokens \(([^)]{0,200}?\d+ in the output)\)",
+        )
+        .expect("the router-window regex")
+    })
+}
+
+/// Each "N of <kind> input" inside the OpenRouter parenthesis (text,
+/// tool, image) — the prompt is their sum.
+fn router_input() -> &'static Regex {
+    static ROUTER_INPUT: OnceLock<Regex> = OnceLock::new();
+    ROUTER_INPUT.get_or_init(|| {
+        Regex::new(r"(?i)(\d+) of [a-z ]{1,20}? input").expect("the router-input regex")
     })
 }
 
@@ -224,6 +263,17 @@ mod tests {
             (
                 "Invalid max_tokens value, the valid range of max_tokens is [1, 8192]",
                 None,
+            ),
+            // OpenRouter's, splitting the prompt by kind and counting the
+            // reply in the window (the reference's TestReplyLeftOpenRouter,
+            // 848269fc).
+            (
+                "This endpoint's maximum context length is 1048576 tokens. However, you requested about 1050086 tokens (101187 of text input, 5181 of tool input, 943718 in the output). Please reduce the length of either one, or use the context-compression plugin to compress your prompt automatically.",
+                Some(942208),
+            ),
+            (
+                "This endpoint's maximum context length is 200000 tokens. However, you requested about 210000 tokens (10000 of text input, 4000 of image input, 196000 in the output).",
+                Some(186000),
             ),
         ] {
             assert_eq!(reply_left(message), want, "{message}");
