@@ -7,12 +7,11 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Query, Request, State};
-use axum::http::{HeaderMap, StatusCode, Uri, header};
-use axum::middleware::{self, Next};
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -55,8 +54,7 @@ use crate::unfit_fields;
 use crate::upstream;
 use crate::usage::{RequestLog, RequestTracker};
 
-/// The dependency-free local console. It contains no secrets and fetches
-/// protected data only after the user supplies the gateway token.
+/// The dependency-free local console.
 const CONSOLE_HTML: &str = include_str!("console.html");
 
 /// Shared handler state.
@@ -99,6 +97,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/agents/{id}/apply", post(crate::agents::apply))
         .route("/agents/{id}/recover", post(crate::agents::recover))
         .route("/stats", get(stats))
+        .route("/api/trace", get(trace))
         .route("/config", get(config))
         .route("/config/providers", post(crate::providers::create))
         .route(
@@ -120,82 +119,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/config/found-groups", put(update_found_groups))
         .route("/config/vision", put(update_vision))
-        // Every route above proves it knows the configured local token
-        // before a request can reach a provider or read statistics. The
-        // health probe and secret-free login page below are added after
-        // the layer and stay public; the page itself fetches no protected
-        // data until the user enters the token.
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_token))
+        // The gateway only ever binds loopback, so no token gate: the
+        // console and the model routes are open to anything that can
+        // already reach the port.
         .route("/health", get(health))
         .route("/", get(console))
         .route("/ui", get(console))
         .with_state(state)
-}
-
-/// Require the configured local token on every model route.
-///
-/// Agents send it in the header natural to their protocol: Bearer for
-/// OpenAI-compatible clients, `x-api-key` or Bearer for Anthropic, and
-/// `x-goog-api-key` for Gemini. The comparison is constant-time because a
-/// local process can still attempt timing measurements.
-async fn require_token(
-    State(state): State<Arc<AppState>>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let headers = request.headers();
-    let authorized = bearer_token(headers)
-        .or_else(|| header_token(headers, "x-api-key"))
-        .or_else(|| header_token(headers, "x-goog-api-key"))
-        .is_some_and(|present| constant_time_eq(present, &state.config.current().token));
-    if !authorized {
-        let status = StatusCode::UNAUTHORIZED;
-        return err_response(status, auth_error_body(request.uri(), status));
-    }
-    next.run(request).await
-}
-
-fn bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
-    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
-    let (scheme, token) = value.split_once(' ')?;
-    if !scheme.eq_ignore_ascii_case("bearer") || token.is_empty() {
-        return None;
-    }
-    Some(token)
-}
-
-fn header_token<'a>(headers: &'a axum::http::HeaderMap, name: &'static str) -> Option<&'a str> {
-    headers.get(name)?.to_str().ok()
-}
-
-fn constant_time_eq(a: &str, b: &str) -> bool {
-    use subtle::ConstantTimeEq;
-
-    let mut diff = (a.len() ^ b.len()) as u8;
-    for (x, y) in a.bytes().zip(b.bytes()) {
-        diff |= x ^ y;
-    }
-    diff.ct_eq(&0).into()
-}
-
-fn auth_error_body(uri: &Uri, status: StatusCode) -> Value {
-    let path = uri.path();
-    if path.starts_with("/v1beta") {
-        // The gateway's own auth refusal keeps the Gemini reason it has
-        // always said (a 401 reads PERMISSION_DENIED here), not the
-        // reference's UNAUTHENTICATED mapping for upstream errors.
-        upstream::gemini_error_reason(
-            status,
-            "missing or invalid magpie-lite token",
-            "PERMISSION_DENIED",
-        )
-    } else if path == "/v1/messages" {
-        upstream::anthropic_error(status, "missing or invalid magpie-lite token")
-    } else if path == "/v1/responses" {
-        upstream::responses_error(status, "missing or invalid magpie-lite token")
-    } else {
-        upstream::chat_error(status, "missing or invalid magpie-lite token")
-    }
 }
 
 /// Run the gateway until the process is stopped.
@@ -256,6 +186,61 @@ pub async fn serve_with_config_path(
     let shutdown = async {
         let _ = tokio::signal::ctrl_c().await;
     };
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await?;
+    state.affinity.flush();
+    Ok(())
+}
+
+/// Serve on an already-bound listener, reporting its address on the
+/// channel so an embedding app can open its window on the actual port
+/// (an ephemeral port, or one another magpie was not holding). Stops
+/// when the shutdown future resolves — a Tauri app's quit, in place of
+/// the standalone Ctrl-C.
+pub async fn serve_on_listener(
+    config: Config,
+    listener: tokio::net::TcpListener,
+    config_path: Option<std::path::PathBuf>,
+    history_path: Option<std::path::PathBuf>,
+    bound: tokio::sync::oneshot::Sender<std::net::SocketAddr>,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> anyhow::Result<()> {
+    let addr = listener.local_addr()?;
+    let port = addr.port();
+    let http = upstream::http_client()?;
+    let requests = match history_path.as_ref().or(config.history_path.as_ref()) {
+        Some(path) => {
+            let log = RequestLog::open(path)?;
+            Arc::new(Mutex::new(log))
+        }
+        None => Arc::new(Mutex::new(RequestLog::default())),
+    };
+    let agent_config = match &config_path {
+        Some(path) => path.clone(),
+        None => crate::config::config_path()?,
+    };
+    let agent_state_dir = magpie_agents::lifecycle::state_directory(&agent_config)?;
+    retired_store::init(agent_state_dir.join("retired.json"));
+    let manager = magpie_agents::lifecycle::Manager::native(agent_state_dir.clone())?;
+    let affinity = AffinityStore::beside(Some(agent_config.as_path()));
+    let state = Arc::new(AppState {
+        agents: Some(crate::agents::AgentService {
+            manager: Arc::new(manager),
+            port,
+            state_dir: agent_state_dir,
+        }),
+        config: ConfigStore::new(config, config_path),
+        http,
+        requests,
+        key_rotation: crate::config::KeyRotator::default(),
+        affinity,
+        lanes: lanes::Lanes::default(),
+        rpms: lanes::Rpms::default(),
+    });
+    let app = build_router(Arc::clone(&state));
+    let _ = bound.send(addr);
+    tracing::info!("magpie-lite gateway listening on http://{addr}");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown)
         .await?;
@@ -325,6 +310,85 @@ async fn stats(State(state): State<Arc<AppState>>, Query(query): Query<StatsQuer
 /// GET `/config` — secret-free routing metadata for the console.
 async fn config(State(state): State<Arc<AppState>>) -> Response {
     config_response(StatusCode::OK, state.config.snapshot())
+}
+
+/// Query string for `GET /api/trace`: the last seq the caller holds and
+/// whether to hold the request open until the seq moves.
+#[derive(Debug, Default, serde::Deserialize)]
+struct TraceQuery {
+    after: Option<u64>,
+    wait: Option<String>,
+}
+
+/// GET `/api/trace` — the request records the gateway finished, as the
+/// Routing page reads them. `after=<seq>` limits the reply to records
+/// finished since; `wait=1` holds the request open, returning as soon
+/// as one record lands or ~25s pass with none, whichever is first — the
+/// long-poll the page's live view runs on (the reference's
+/// `/api/gateway/trace`, at trace.go). Totals mirror `/stats`'s
+/// process-lifetime counts.
+async fn trace(State(state): State<Arc<AppState>>, Query(query): Query<TraceQuery>) -> Response {
+    const TRACE_WAIT: Duration = Duration::from_secs(25);
+    let after = query.after.unwrap_or(0);
+    let mut receiver = {
+        let log = state
+            .requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if log.seq() > after || query.wait.is_none() {
+            let (seq, routes) = log.trace_since(after);
+            return Json(json!({
+                "seq": seq,
+                "routes": routes,
+                "totals": {
+                    "requests": log.snapshot().total_requests,
+                    "errors": log.snapshot().errors,
+                    "rerouted": routes.iter().filter(|r| r.tries.len() > 1).count() as u64,
+                },
+                "now": unix_ms_now(),
+            }))
+            .into_response();
+        }
+        log.trace_subscribe()
+    };
+    // Nothing newer than `after`: hold the request until a record lands
+    // or the wait is up. A subscribe race is covered by the loop's check.
+    let _ = tokio::time::timeout(TRACE_WAIT, async {
+        loop {
+            if receiver.changed().await.is_err() {
+                return;
+            }
+            if *receiver.borrow() > after {
+                return;
+            }
+        }
+    })
+    .await;
+    let log = state
+        .requests
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (seq, routes) = log.trace_since(after);
+    let snapshot = log.snapshot();
+    Json(json!({
+        "seq": seq,
+        "routes": routes,
+        "totals": {
+            "requests": snapshot.total_requests,
+            "errors": snapshot.errors,
+            "rerouted": routes.iter().filter(|r| r.tries.len() > 1).count() as u64,
+        },
+        "now": unix_ms_now(),
+    }))
+    .into_response()
+}
+
+fn unix_ms_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis()
+        .min(u64::MAX as u128) as u64
 }
 
 /// Parse the optional optimistic-concurrency precondition used by management writes.
@@ -3003,6 +3067,7 @@ async fn send_with_fallback(
                         }
                     };
 
+                    tracker.first_bytes();
                     let status = resp.status();
                     liveness.activity.headers(status.is_success());
                     if status.is_success()
@@ -3226,6 +3291,7 @@ async fn send_with_fallback(
                                     failure.status.as_u16(),
                                     &failure.body,
                                 ) {
+                                    tracker.rest_try(back_in);
                                     crate::model_rest::rest(
                                         &route.provider.id,
                                         &route.model,
@@ -3238,6 +3304,7 @@ async fn send_with_fallback(
                                         Some(&failure.body),
                                         config.key_cooldown_for(&route.provider),
                                     );
+                                    tracker.rest_try(cooldown);
                                     state.key_rotation.cool_down(
                                         &route.provider.id,
                                         route.provider.key_generation,
@@ -3504,6 +3571,7 @@ async fn send_with_fallback(
                             status.as_u16(),
                             &error.body,
                         ) {
+                            tracker.rest_try(back_in);
                             crate::model_rest::rest(
                                 &route.provider.id,
                                 &route.model,
@@ -3516,6 +3584,7 @@ async fn send_with_fallback(
                                 Some(&error.body),
                                 config.key_cooldown_for(&route.provider),
                             );
+                            tracker.rest_try(cooldown);
                             state.key_rotation.cool_down(
                                 &route.provider.id,
                                 route.provider.key_generation,
@@ -4781,6 +4850,7 @@ async fn prefetch_stream(
         let UpstreamRead::Event(mut item) = read else {
             break;
         };
+        tracker.first_bytes();
         if let StreamEvent::Usage(usage) = &item.event {
             tracker.observe_usage(usage);
             // Replaying buffered frames must not roll back newer observed usage.

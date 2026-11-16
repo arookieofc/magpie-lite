@@ -1,0 +1,19 @@
+[package]
+name = "magpie-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "magpie-app"
+path = "src/main.rs"
+
+[dependencies]
+magpie-gateway = { path = "../gateway" }
+magpie-router = { path = "../router" }
+anyhow.workspace = true
+tokio.workspace = true
+tauri = { version = "2", features = [] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

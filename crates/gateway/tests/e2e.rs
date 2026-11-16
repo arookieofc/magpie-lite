@@ -3948,11 +3948,18 @@ async fn usage_records_the_effort_each_try_was_sent_at() {
         .json()
         .await
         .unwrap();
-    assert_eq!(
-        stats["recent_requests"][0]["tries"],
-        json!([
-            {"provider": "primary", "model": "mock-model", "key_slot": 0, "effort": "high"},
-            {"provider": "backup", "model": "mock-model", "key_slot": 0, "effort": "low"},
-        ])
-    );
+    let tries = &stats["recent_requests"][0]["tries"];
+    assert_eq!(tries.as_array().unwrap().len(), 2);
+    // Who was asked at which level is exact; how it went — status, ms,
+    // first bytes — is recorded too but its timing is not (the
+    // reference's Try.Status/Millis/firstMs).
+    assert_eq!(tries[0]["provider"], "primary");
+    assert_eq!(tries[0]["model"], "mock-model");
+    assert_eq!(tries[0]["key_slot"], 0);
+    assert_eq!(tries[0]["effort"], "high");
+    assert_eq!(tries[0]["status"], "500");
+    assert!(tries[0]["ms"].as_u64().is_some());
+    assert_eq!(tries[1]["provider"], "backup");
+    assert_eq!(tries[1]["effort"], "low");
+    assert_eq!(tries[1]["status"], "ok");
 }

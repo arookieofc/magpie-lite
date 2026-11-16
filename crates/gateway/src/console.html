@@ -338,6 +338,59 @@
       font-weight: 700;
     }
 
+    /* Routing, live — laid out as magpie's own Routing view:
+       agents left, hub middle, accounts right, the request's story
+       in steps under it and its history under that. */
+    .rt { padding: 4px 0 0; }
+    .rt-top { margin: 0 0 2px; }
+    .rt-what { margin: 0; font-size: 13px; color: var(--muted); }
+    .rt-stage { position: relative; display: grid; grid-template-columns: fit-content(max(124px, 16%)) fit-content(max(124px, 16%)) minmax(0, 1fr); column-gap: 56px; align-items: center; padding: 18px 2px; }
+    .rt-srcs { display: grid; gap: 10px; min-width: 0; }
+    .rt-wires { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+    .rt-wires path { fill: none; stroke: var(--border-strong); stroke-width: 1.5; }
+    .rt-wires path.live { stroke: var(--accent); stroke-dasharray: 3 5; animation: rtflow .7s linear infinite; }
+    @keyframes rtflow { to { stroke-dashoffset: -8; } }
+    .rt-node { position: relative; z-index: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 10px 10px; background: var(--surface-strong); border: 1px solid var(--border); border-radius: 12px; text-align: center; }
+    .rt-node .rt-bird, .rt-node .rt-ic { width: 24px; height: 24px; margin-bottom: 3px; color: var(--accent); }
+    .rt-node b { font-size: 13px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rt-node small { font-size: 11px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rt-hub { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(120, 211, 255, .08); }
+    .rt-accts { position: relative; z-index: 1; list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; min-width: 0; }
+    .rt-accts li { position: relative; display: grid; grid-template-columns: 10px minmax(0, max-content) minmax(0, 1fr); align-items: center; column-gap: 10px; padding: 9px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 13px; }
+    .rt-accts li .dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); }
+    .rt-accts li.ok .dot { background: var(--good); border-color: var(--good); }
+    .rt-accts li.bad .dot { background: var(--bad); border-color: var(--bad); }
+    .rt-accts li.wait .dot { background: var(--warn); border-color: var(--warn); }
+    .rt-accts li b { font-weight: 560; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rt-accts li em { font-style: normal; font-size: 11.5px; color: var(--muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .rt-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px 20px; flex-wrap: wrap; padding: 12px 2px 0; border-top: 1px solid var(--border); margin-top: 4px; }
+    .rt-cap { flex: 1 1 20em; margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg, #e9eef8); min-height: 22px; }
+    .rt-stats { display: flex; gap: 18px; font-size: 11px; color: var(--muted); }
+    .rt-stats > span { display: flex; flex-direction: column; }
+    .rt-stats b { font-size: 19px; line-height: 1.2; font-weight: 650; letter-spacing: -.02em; color: #e9eef8; font-variant-numeric: tabular-nums; }
+    .rt-log { margin-top: 10px; }
+    .rt-log-head { font-size: 12px; font-weight: 600; }
+    .rt-steps { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; max-height: 220px; overflow-y: auto; }
+    .rt-steps li { position: relative; padding-left: 20px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+    .rt-steps li::before { content: ""; position: absolute; left: 5px; top: .55em; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .rt-steps li.why { color: #e9eef8; }
+    .rt-steps li.why::before { background: #e9eef8; }
+    .rt-steps li.aside { color: var(--muted); }
+    .rt-steps li.aside::before { background: none; border: 1px solid var(--muted); width: 4px; height: 4px; left: 6px; }
+    .rt-steps li.ok::before { background: var(--good); }
+    .rt-steps li.bad::before { background: var(--bad); }
+    .rt-steps li.wait::before { background: var(--warn); }
+    .rt-off { padding: 18px 4px; text-align: center; color: var(--muted); font-size: 13px; }
+    .rt-reqs { margin-top: 14px; display: grid; gap: 4px; max-height: 200px; overflow-y: auto; }
+    .rt-req { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 6px 8px; font-size: 12px; border-radius: 6px; }
+    .rt-req:hover { background: var(--surface-soft); }
+    .rt-req .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .rt-req .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rt-req .what b { font-weight: 560; }
+    .rt-req .out { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .rt-req.ok .out { color: var(--good); }
+    .rt-req.bad .out { color: var(--bad); }
+
     .table-wrap { overflow-x: auto; }
 
     table {
@@ -507,24 +560,7 @@
     </header>
 
     <main>
-      <section id="login" class="login-panel" aria-labelledby="login-title">
-        <div class="card login-card">
-          <h2 id="login-title">Connect to this gateway</h2>
-          <p class="login-copy">Enter the local token from your magpie-lite configuration. It stays in this browser tab and is sent only to this origin.</p>
-          <form id="login-form">
-            <div class="field">
-              <label for="token">Gateway token</label>
-              <input id="token" class="token-input" name="token" type="password" autocomplete="off" spellcheck="false" required>
-            </div>
-            <div class="form-actions">
-              <button id="connect" class="button" type="submit">Open console</button>
-            </div>
-          </form>
-          <p id="login-message" class="console-message" role="status" aria-live="polite"></p>
-        </div>
-      </section>
-
-      <section id="console" aria-label="Gateway console" hidden>
+      <section id="console" aria-label="Gateway console">
         <section class="metrics" aria-label="Gateway totals">
           <article class="metric">
             <p class="metric-label">Process requests</p>
@@ -581,7 +617,6 @@
                 <h2 id="providers-title">Provider totals</h2>
                 <div class="header-actions">
                   <button id="refresh" class="mini-button" type="button">Refresh</button>
-                  <button id="sign-out" class="mini-button" type="button">Sign out</button>
                 </div>
               </div>
               <div class="table-wrap">
@@ -603,6 +638,42 @@
                 </table>
               </div>
               <p id="provider-empty" class="empty" hidden>No provider has served a request in this process yet.</p>
+            </section>
+
+            <section class="panel" aria-labelledby="routing-live-title">
+              <div class="panel-header">
+                <h2 id="routing-live-title">Routing</h2>
+                <span class="pill" id="trace-pill" hidden>live</span>
+              </div>
+              <div class="rt">
+                <div class="rt-top">
+                  <p class="rt-what" id="rt-what">Live · the gateway's own record of each request, as it decides.</p>
+                </div>
+                <div class="rt-stage" id="rt-stage" hidden>
+                  <svg class="rt-wires" id="rt-wires" aria-hidden="true"></svg>
+                  <div class="rt-srcs" id="rt-srcs"></div>
+                  <div class="rt-node rt-hub">
+                    <svg class="rt-bird" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7l-4.3-2.1a2 2 0 0 0-2.6.9L11 9.5a2 2 0 0 1-1.6 1L3 12"/></svg>
+                    <b>magpie</b>
+                    <small id="rt-hub-addr"></small>
+                  </div>
+                  <ol class="rt-accts" id="rt-accts"></ol>
+                </div>
+                <div class="rt-foot">
+                  <p class="rt-cap" id="rt-cap"></p>
+                  <div class="rt-stats" id="rt-stats">
+                    <span><b id="rt-stat-requests">0</b><span>requests</span></span>
+                    <span><b id="rt-stat-rerouted">0</b><span>rerouted</span></span>
+                    <span><b id="rt-stat-errors">0</b><span>errors</span></span>
+                  </div>
+                </div>
+                <div class="rt-log" id="rt-log" hidden>
+                  <div class="rt-log-head" id="rt-log-head">How the last request was routed</div>
+                  <ol class="rt-steps" id="rt-steps"></ol>
+                </div>
+                <div class="rt-off" id="rt-empty">No request has been routed yet. When one arrives, its path plays out here.</div>
+                <div class="rt-reqs" id="rt-reqs"></div>
+              </div>
             </section>
 
             <section class="panel" aria-labelledby="recent-title">
@@ -772,11 +843,6 @@
     const elements = {
       healthPill: document.getElementById("health-pill"),
       dataPill: document.getElementById("data-pill"),
-      login: document.getElementById("login"),
-      loginForm: document.getElementById("login-form"),
-      token: document.getElementById("token"),
-      connect: document.getElementById("connect"),
-      loginMessage: document.getElementById("login-message"),
       console: document.getElementById("console"),
       requests: document.getElementById("metric-requests"),
       errors: document.getElementById("metric-errors"),
@@ -908,13 +974,35 @@
       modelEmpty: document.getElementById("model-empty"),
       usageRows: document.getElementById("usage-rows"),
       usageEmpty: document.getElementById("usage-empty"),
+      rtStage: document.getElementById("rt-stage"),
+      rtWires: document.getElementById("rt-wires"),
+      rtSrcs: document.getElementById("rt-srcs"),
+      rtHubAddr: document.getElementById("rt-hub-addr"),
+      rtAccts: document.getElementById("rt-accts"),
+      rtEmpty: document.getElementById("rt-empty"),
+      rtCap: document.getElementById("rt-cap"),
+      rtStatRequests: document.getElementById("rt-stat-requests"),
+      rtStatRerouted: document.getElementById("rt-stat-rerouted"),
+      rtStatErrors: document.getElementById("rt-stat-errors"),
+      rtLog: document.getElementById("rt-log"),
+      rtLogHead: document.getElementById("rt-log-head"),
+      rtSteps: document.getElementById("rt-steps"),
+      rtReqs: document.getElementById("rt-reqs"),
+      rtPill: document.getElementById("trace-pill"),
       refresh: document.getElementById("refresh"),
-      signOut: document.getElementById("sign-out"),
       autoRefresh: document.getElementById("auto-refresh"),
       message: document.getElementById("console-message")
     };
 
-    let token = "";
+    // The trace the Routing page reads: the last seq it heard of, and
+    // the requests it knows, keyed by the record's identity (a position
+    // in the page's own map, since the record itself has no id field).
+    let traceSeq = 0;
+    let traceAbort = null;
+    let traceRoutes = new Map();
+    let traceRunId = 0;
+    let traceRunning = false;
+
     let refreshTimer = 0;
     let lastUpdate = "";
     let editingAgent = null;
@@ -968,7 +1056,6 @@
     }
 
     function setMessage(message) {
-      elements.loginMessage.textContent = message;
       elements.message.textContent = message;
     }
 
@@ -999,7 +1086,7 @@
       elements.statsRangeHelp.classList.toggle("error", error);
     }
 
-    async function authorized(path, options = {}) {
+    async function request(path, options = {}) {
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 30000);
       try {
@@ -1008,16 +1095,10 @@
           ...options,
           signal: controller.signal,
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
             ...(options.headers || {})
           }
         });
-        if (response.status === 401) {
-          const error = new Error("The gateway token was not accepted.");
-          error.unauthorized = true;
-          throw error;
-        }
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           throw new Error(body.error?.message || `Request failed (HTTP ${response.status}).`);
@@ -1380,7 +1461,7 @@
       elements.agentMessage.textContent = operation === "preview" ? "Preparing a private preview; agent files are unchanged…" : operation === "recover" ? "Recovering interrupted operation…" : "Applying reviewed changes…";
       let result;
       try {
-        result = await authorized("/agents/" + encodeURIComponent(id) + "/" + operation, {
+        result = await request("/agents/" + encodeURIComponent(id) + "/" + operation, {
           method: "POST", ...(operation === "recover" ? {} : { body: JSON.stringify(body) })
         });
         if (session !== sessionRevision) return;
@@ -1403,9 +1484,6 @@
         }
       } catch (error) {
         if (session !== sessionRevision) return;
-        if (error.unauthorized) {
-          disconnect(true); setMessage(error.message); return;
-        }
         elements.agentMessage.textContent = error.message + (operation === "apply" ? " Preview again before retrying; refresh status if the operation was interrupted." : " Resolve the issue or refresh status before retrying.");
       } finally {
         if (session === sessionRevision) setManagementBusy(false);
@@ -1964,7 +2042,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
       elements.providerMessage.textContent = method === "DELETE" ? "Deleting…" : "Saving…";
       let saved = false;
       try {
-        const snapshot = await authorized(path, {
+        const snapshot = await request(path, {
           method,
           ...(body ? { body: JSON.stringify(body) } : {}),
           headers: configRevision === null ? {} : { "If-Match": String(configRevision) }
@@ -1976,9 +2054,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
         elements.providerMessage.textContent = success;
       } catch (error) {
         if (session !== sessionRevision) return;
-        if (error.unauthorized) disconnect(true);
         elements.providerMessage.textContent = error.message;
-        if (error.unauthorized) setMessage(error.message);
       } finally {
         if (session === sessionRevision) setManagementBusy(false);
       }
@@ -2103,7 +2179,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
       setManagementBusy(true, operation === "test" ? "Testing…" : "Discovering…");
       elements.providerMessage.textContent = operation === "test" ? "Testing a small generation request…" : "Fetching provider models…";
       try {
-        const result = await authorized("/config/provider-tools/" + operation, {
+        const result = await request("/config/provider-tools/" + operation, {
           method: "POST", body: JSON.stringify({ provider, ...(model ? { model } : {}) })
         });
         if (session !== sessionRevision) return;
@@ -2118,9 +2194,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
         }
       } catch (error) {
         if (session !== sessionRevision) return;
-        if (error.unauthorized) disconnect(true);
         elements.providerMessage.textContent = error.message;
-        if (error.unauthorized) setMessage(error.message);
       } finally {
         if (session === sessionRevision) setManagementBusy(false);
       }
@@ -2188,7 +2262,6 @@ ot folder ${rule.exceptFolders.join("|")}`);
       elements.groupFound.disabled = busy;
       elements.visionModel.disabled = busy;
       elements.visionSave.disabled = busy;
-      elements.signOut.disabled = busy;
       for (const button of elements.groupList.querySelectorAll("button")) button.disabled = busy;
       elements.groupSave.textContent = busy ? label : "Save group";
     }
@@ -2202,7 +2275,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
       elements.groupMessage.textContent = method === "DELETE" ? "Deleting…" : "Saving…";
       let saved = false;
       try {
-        const snapshot = await authorized(path, {
+        const snapshot = await request(path, {
           method,
           ...(body ? { body: JSON.stringify(body) } : {}),
           headers: configRevision === null ? {} : { "If-Match": String(configRevision) }
@@ -2214,9 +2287,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
         elements.groupMessage.textContent = success;
       } catch (error) {
         if (session !== sessionRevision) return;
-        if (error.unauthorized) disconnect(true);
         elements.groupMessage.textContent = error.message;
-        if (error.unauthorized) setMessage(error.message);
       } finally {
         if (session === sessionRevision) setManagementBusy(false);
       }
@@ -2257,7 +2328,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
       setManagementBusy(true, "Saving…");
       elements.visionMessage.textContent = "Saving…";
       try {
-        const snapshot = await authorized("/config/vision", {
+        const snapshot = await request("/config/vision", {
           method: "PUT",
           body: JSON.stringify({ vision }),
           headers: configRevision === null ? {} : { "If-Match": String(configRevision) }
@@ -2267,9 +2338,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
         elements.visionMessage.textContent = vision === null || vision === "off" ? "Image recognition is off." : `Image recognition is ${vision}.`;
       } catch (error) {
         if (session !== sessionRevision) return;
-        if (error.unauthorized) disconnect(true);
         elements.visionMessage.textContent = error.message;
-        if (error.unauthorized) setMessage(error.message);
       } finally {
         if (session === sessionRevision) setManagementBusy(false);
       }
@@ -2296,7 +2365,7 @@ ot folder ${rule.exceptFolders.join("|")}`);
       setManagementBusy(true, "Picking…");
       elements.groupMessage.textContent = `Picking ${member}…`;
       try {
-        const snapshot = await authorized(`/config/groups/${encodeURIComponent(group.id)}`, {
+        const snapshot = await request(`/config/groups/${encodeURIComponent(group.id)}`, {
           method: "PUT",
           body: JSON.stringify({ ...group, pick: member }),
           headers: configRevision === null ? {} : { "If-Match": String(configRevision) }
@@ -2403,16 +2472,15 @@ ot folder ${rule.exceptFolders.join("|")}`);
     });
 
     async function update(silent) {
-      if (!token || managementBusy) return;
+      if (managementBusy) return;
       const revision = ++dataRevision;
       const session = sessionRevision;
       try {
         const [stats, models, routing, agents] = await Promise.all([
-          authorized(statsPath()),
-          authorized("/v1/models"),
-          authorized("/config"),
-          authorized("/agents").then(data => ({ data })).catch(error => {
-            if (error.unauthorized) throw error;
+          request(statsPath()),
+          request("/v1/models"),
+          request("/config"),
+          request("/agents").then(data => ({ data })).catch(error => {
             return { error };
           })
         ]);
@@ -2433,11 +2501,6 @@ ot folder ${rule.exceptFolders.join("|")}`);
         return true;
       } catch (error) {
         if (revision !== dataRevision || session !== sessionRevision) return;
-        if (error.unauthorized) {
-          disconnect(true);
-          setMessage(error.message);
-          return;
-        }
         setPill(elements.dataPill, "Refresh failed", "bad");
         if (!silent) setMessage(error.message || "Could not refresh gateway data.");
       }
@@ -2464,61 +2527,6 @@ ot folder ${rule.exceptFolders.join("|")}`);
       if (refreshTimer) window.clearInterval(refreshTimer);
       refreshTimer = 0;
     }
-
-    function disconnect(expired) {
-      ++sessionRevision;
-      ++dataRevision;
-      statsQuery = null;
-      elements.statsRange.reset();
-      setStatsRangeMessage(describeStatsRange());
-      closeAgentEditor(false);
-      agentSnapshot = [];
-      clear(elements.agentList);
-      clear(elements.agentModelOptions);
-      elements.agentLoadMessage.textContent = "";
-      setManagementBusy(false);
-      elements.providerEditor.hidden = true;
-      elements.providerEditor.reset();
-      elements.providerKeys.value = "";
-      elements.providerDiscoveredModels.replaceChildren();
-      elements.providerMessage.textContent = "";
-      editingProvider = null;
-      routingSnapshot = null;
-      configRevision = null;
-      elements.groupEditor.hidden = true;
-      elements.groupEditor.reset();
-      elements.groupMessage.textContent = "";
-      editingGroup = null;
-      token = "";
-      stopAutoRefresh();
-      elements.console.hidden = true;
-      elements.login.hidden = false;
-      elements.dataPill.hidden = true;
-      elements.connect.disabled = false;
-      elements.token.value = "";
-      if (!expired) setMessage("");
-      elements.token.focus();
-    }
-
-    elements.loginForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      const candidate = elements.token.value.trim();
-      if (!candidate) return;
-      token = candidate;
-      elements.connect.disabled = true;
-      setMessage("Connecting…");
-      try {
-        const loaded = await update(false);
-        if (!token || !loaded) return;
-        elements.login.hidden = true;
-        elements.console.hidden = false;
-        elements.dataPill.hidden = false;
-        elements.token.value = "";
-        startAutoRefresh();
-      } finally {
-        elements.connect.disabled = false;
-      }
-    });
 
     elements.statsRange.addEventListener("submit", async event => {
       event.preventDefault();
@@ -2547,14 +2555,275 @@ ot folder ${rule.exceptFolders.join("|")}`);
       await update(false);
     });
     elements.refresh.addEventListener("click", () => update(false));
-    elements.signOut.addEventListener("click", () => disconnect(false));
     elements.autoRefresh.addEventListener("change", startAutoRefresh);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && token) update(true);
+      if (document.visibilityState === "visible") update(true);
     });
+
+    // ---------- routing live trace ----------
+
+    function traceAbortCurrent() {
+      if (traceAbort) { traceAbort.abort(); traceAbort = null; }
+    }
+
+    function drawWires() {
+      const stage = elements.rtStage;
+      if (!stage || stage.hidden) return;
+      const svg = elements.rtWires;
+      const stageBox = stage.getBoundingClientRect();
+      const srcs = [...elements.rtSrcs.querySelectorAll(".rt-node")];
+      const hubBox = stage.querySelector(".rt-hub").getBoundingClientRect();
+      const accounts = [...elements.rtAccts.querySelectorAll("li")];
+      const NS = "http://www.w3.org/2000/svg";
+      svg.setAttribute("viewBox", `0 0 ${stageBox.width} ${stageBox.height}`);
+      svg.replaceChildren();
+      const wire = (x1, y1, x2, y2, live) => {
+        const path = document.createElementNS(NS, "path");
+        const sx = x1 - stageBox.left, sy = y1 - stageBox.top;
+        const tx = x2 - stageBox.left, ty = y2 - stageBox.top;
+        const bend = Math.max(28, (tx - sx) * 0.45);
+        path.setAttribute("d", `M ${sx} ${sy} C ${sx + bend} ${sy} ${tx - bend} ${ty} ${tx} ${ty}`);
+        if (live) path.setAttribute("class", "live");
+        svg.append(path);
+      };
+      const hubLeft = hubBox.left;
+      const hubMidY = hubBox.top + hubBox.height / 2;
+      srcs.forEach(src => {
+        const b = src.getBoundingClientRect();
+        wire(b.right, b.top + b.height / 2, hubLeft, hubMidY, true);
+      });
+      accounts.forEach(acct => {
+        const ab = acct.getBoundingClientRect();
+        wire(hubBox.right, hubMidY, ab.left, ab.top + ab.height / 2,
+          acct.classList.contains("ok") || acct.classList.contains("wait"));
+      });
+    }
+
+    function stepLine(text, cls) {
+      const li = document.createElement("li");
+      if (cls) li.className = cls;
+      li.textContent = text;
+      return li;
+    }
+
+    // One step of the request's story, in the words the trace lets us
+    // say — never what routing might have thought, only what it did.
+    function tryStep(request, try_, isLast) {
+      const who = `${try_.provider}/${try_.model}`;
+      const key = try_.key_slot ? ` · key ${try_.key_slot + 1}` : "";
+      const effort = try_.effort ? ` at ${try_.effort}` : "";
+      if (!try_.status) {
+        return { text: `${who}${key}${effort} is being asked…`, cls: "wait" };
+      }
+      if (try_.status === "ok") {
+        const parts = [];
+        if (try_.ms) parts.push(`answered in ${try_.ms}ms`);
+        if (try_.first_ms) parts.push(`first bytes ${try_.first_ms}ms`);
+        return { text: `${who}${key}${effort} ${parts.join(", ") || "answered"}`, cls: "ok" };
+      }
+      // a failure: say what it was, then why the next was tried when
+      // there was a next
+      const fail = try_.status;
+      const bits = [`${who}${key}${effort}`];
+      bits.push(fail === "network_error" ? "could not be reached" :
+        fail === "refusal" ? "refused" :
+        fail === "queue_refused" ? "had a full queue" :
+        fail === "rpm_refused" ? "was out of minute room" :
+        /^\d+$/.test(fail) ? `answered ${fail}` : `failed as ${fail}`);
+      if (try_.queued_ms) bits.push(`waited ${try_.queued_ms}ms for a slot`);
+      if (try_.rest_ms) bits.push(`rests ${formatDuration(try_.rest_ms)}`);
+      if (!isLast) bits.push("so the next was asked");
+      return { text: bits.join(" · "), cls: "bad" };
+    }
+
+    function requestCaption(r) {
+      const tries = r.tries || [];
+      const answered = tries.find(t => t.status === "ok");
+      if (answered) {
+        const parts = [`${answered.provider}/${answered.model}`];
+        if (answered.ms) parts.push(`answered in ${answered.ms}ms`);
+        if (tries.length > 1) parts.push(`after ${tries.length} tries`);
+        return parts.join(" · ");
+      }
+      const last = tries[tries.length - 1];
+      if (last) return `${last.provider}/${last.model} · ${r.status || "failed"}`;
+      return r.status || "incomplete";
+    }
+
+    function renderTrace() {
+      const routes = [...traceRoutes.values()].sort((a, b) => (a.seq || 0) - (b.seq || 0));
+      const latest = routes[routes.length - 1];
+      if (!latest) {
+        elements.rtEmpty.hidden = false;
+        elements.rtStage.hidden = true;
+        elements.rtLog.hidden = true;
+        elements.rtPill.hidden = true;
+        elements.rtCap.textContent = "";
+        return;
+      }
+
+      elements.rtEmpty.hidden = true;
+      elements.rtStage.hidden = false;
+      elements.rtPill.hidden = false;
+
+      // The agents that sent, one card each — the stage plays every
+      // request's source at once when several send at once.
+      clear(elements.rtSrcs);
+      const agents = new Map();
+      for (const r of routes.slice(-6)) {
+        const key = r.client_protocol || "agent";
+        if (!agents.has(key)) agents.set(key, r);
+      }
+      for (const r of agents.values()) {
+        const card = document.createElement("div");
+        card.className = "rt-node rt-src";
+        const name = document.createElement("b");
+        name.textContent = r.client_protocol || "agent";
+        const model = document.createElement("small");
+        model.textContent = r.requested_model || "";
+        model.title = model.textContent;
+        card.append(name, model);
+        elements.rtSrcs.append(card);
+      }
+      elements.rtHubAddr.textContent = window.location.host;
+
+      // The account card per try of the latest request, in the order
+      // the gateway asked them — the wires play its path.
+      clear(elements.rtAccts);
+      const tries = latest.tries || [];
+      tries.forEach((t, i) => {
+        const li = document.createElement("li");
+        li.className = t.status === "ok" ? "ok" : t.status ? "bad" : "wait";
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        const who = document.createElement("b");
+        who.textContent = `${t.provider}/${t.model}` + (t.key_slot ? ` · key ${t.key_slot + 1}` : "");
+        who.title = who.textContent;
+        const meta = document.createElement("em");
+        const parts = [];
+        if (t.ms) parts.push(`${t.ms}ms`);
+        if (t.rest_ms) parts.push(`rests ${formatDuration(t.rest_ms)}`);
+        meta.textContent = parts.join(" · ");
+        li.append(dot, who, meta);
+        elements.rtAccts.append(li);
+      });
+
+      elements.rtCap.textContent = requestCaption(latest);
+      elements.rtStatRequests.textContent = fmt(latest ? routes.length : 0);
+      elements.rtStatRerouted.textContent = fmt(routes.filter(r => (r.tries || []).length > 1).length);
+      elements.rtStatErrors.textContent = fmt(routes.filter(r => r.status !== "ok").length);
+
+      // The story of the latest request, as the gateway decided it.
+      elements.rtLog.hidden = false;
+      elements.rtLogHead.textContent = `How the request at ${formatTime(latest.started_unix_ms)} was routed`;
+      clear(elements.rtSteps);
+      elements.rtSteps.append(
+        stepLine(
+          latest.requested_model.startsWith("group/")
+            ? `${latest.client_protocol} asked for the routing group ${latest.requested_model}`
+            : `${latest.client_protocol} asked for ${latest.requested_model}`,
+          "why"
+        )
+      );
+      if (latest.replans) {
+        elements.rtSteps.append(stepLine(
+          `Every member was busy: it waited ${latest.replan_waited_ms}ms and asked them again ${latest.replans}×`,
+          "aside"
+        ));
+      }
+      tries.forEach((t, i) => {
+        const { text, cls } = tryStep(latest, t, i === tries.length - 1);
+        elements.rtSteps.append(stepLine(text, cls));
+      });
+      if (!tries.length && latest.status) {
+        elements.rtSteps.append(stepLine(`Nothing was tried: ${latest.status}`, "bad"));
+      }
+
+      // The request history — every request the trace still keeps,
+      // newest last at the top.
+      clear(elements.rtReqs);
+      for (const r of routes.slice(-40).reverse()) {
+        const row = document.createElement("div");
+        row.className = `rt-req ${r.status === "ok" ? "ok" : "bad"}`;
+        const when = document.createElement("span");
+        when.className = "when";
+        when.textContent = formatTime(r.started_unix_ms);
+        const what = document.createElement("span");
+        what.className = "what";
+        const b = document.createElement("b");
+        b.textContent = r.requested_model;
+        const tail = document.createElement("span");
+        tail.textContent = ` ${r.client_protocol}`;
+        what.append(b, tail);
+        const out = document.createElement("span");
+        out.className = "out";
+        const parts = [r.status || "…"];
+        if (r.latency_ms) parts.push(`${r.latency_ms}ms`);
+        if ((r.tries || []).length > 1) parts.push(`${r.tries.length} tries`);
+        out.textContent = parts.join(" · ");
+        row.append(when, what, out);
+        elements.rtReqs.append(row);
+      }
+
+      requestAnimationFrame(drawWires);
+    }
+
+    async function tracePoll() {
+      const run = ++traceRunId;
+      traceRunning = true;
+      for (;;) {
+        if (run !== traceRunId) { traceAbort = null; traceRunning = false; return; }
+        try {
+          const controller = new AbortController();
+          traceAbort = controller;
+          const res = await fetch(`/api/trace?after=${traceSeq}&wait=1`, {
+            cache: "no-store",
+            signal: controller.signal
+          });
+          traceAbort = null;
+          if (!res.ok) throw new Error(`trace ${res.status}`);
+          const data = await res.json();
+          if (data.seq < traceSeq) { traceRoutes.clear(); traceSeq = 0; }
+          traceSeq = data.seq;
+          (data.routes || []).forEach(r => traceRoutes.set(r.seq, r));
+          renderTrace();
+        } catch (error) {
+          traceAbort = null;
+          if (run !== traceRunId) { traceRunning = false; return; }
+          if (error.name === "AbortError") return;
+          // The gateway's trace is down or the network dropped: back off
+          // and come again rather than spin.
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+    }
+
+    function traceStart() {
+      if (traceRunning) return;
+      tracePoll();
+    }
+
+    function traceStop() {
+      traceRunId++;
+      traceRunning = false;
+      traceAbortCurrent();
+      traceSeq = 0;
+      traceRoutes.clear();
+      renderTrace();
+    }
 
     checkHealth();
     window.setInterval(checkHealth, 10000);
+
+    // The console is always open on loopback — no token gate — so the
+    // first load is the login: pull data, arm refresh and start the
+    // routing trace.
+    elements.dataPill.hidden = false;
+    (async () => {
+      await update(false);
+      startAutoRefresh();
+      traceStart();
+    })();
   </script>
 </body>
 </html>

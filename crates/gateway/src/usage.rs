@@ -42,6 +42,12 @@ impl From<&Usage> for UsageSnapshot {
 /// One completed (or failed) model request. No prompt or reply text is kept.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestRecord {
+    /// The request's place in this process's finished-record sequence,
+    /// assigned by `RequestLog::record` — `0` on records loaded from
+    /// history or constructed by hand, a 1-based count otherwise. The
+    /// Routing page keys its rows by it (the reference's `Route.ID`).
+    #[serde(default, skip_serializing_if = "u64_is_zero")]
+    pub seq: u64,
     /// Unix time in milliseconds when the gateway received the request.
     pub started_unix_ms: u64,
     /// The protocol the agent used.
@@ -118,6 +124,28 @@ pub struct TryRecord {
     /// reference's `Queued` on each try).
     #[serde(default, skip_serializing_if = "u64_is_zero")]
     pub queued_ms: u64,
+    /// The attempt's outcome as `record_attempt` counted it: `ok`, an HTTP
+    /// status, or a short failure kind like `network_error` or `refusal`.
+    /// Absent on history lines written before it was kept, and while the
+    /// send is still under way.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub status: String,
+    /// Milliseconds from the send's start until its outcome was known —
+    /// reply headers and, for a stream, the end of prefetch (the
+    /// reference's `Try.Millis`). Absent while under way.
+    #[serde(default, skip_serializing_if = "u64_is_zero")]
+    pub ms: u64,
+    /// Milliseconds from the send's start to the upstream's first bytes —
+    /// headers on a whole reply, the first SSE event on a stream (the
+    /// reference's `Try.TTFT`/`firstMs`). Absent when never measured or
+    /// no bytes ever came.
+    #[serde(default, skip_serializing_if = "u64_is_zero")]
+    pub first_ms: u64,
+    /// Milliseconds the key rests after this try, when its failure set a
+    /// cooldown (the reference's `Try.Rest`). Absent for tries that let
+    /// the key serve again at once.
+    #[serde(default, skip_serializing_if = "u64_is_zero")]
+    pub rest_ms: u64,
 }
 
 /// Whether a `queued_ms` is absent from a try record.
@@ -288,16 +316,44 @@ pub struct StatsSnapshot {
 /// and the most recent bounded window is loaded on startup. Aggregate totals
 /// intentionally remain process-local: reloading only the recent window cannot
 /// reconstruct trustworthy lifetime totals or every historical key attempt.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RequestLog {
     total_requests: u64,
     errors: u64,
     providers: BTreeMap<String, ProviderStats>,
     recent_requests: Vec<RequestRecord>,
     sink: Option<File>,
+    /// Monotonic counter bumped on every finished request, for the
+    /// `/api/trace` long-poll: a page asks for what changed `after` its
+    /// last seq. Process-local; a restarted log starts at 0 and the
+    /// page resyncs when the seq it reads is lower than the one it held.
+    seq: u64,
+    /// Wakes `/api/trace?wait=1` readers when `seq` moves. The sender is
+    /// held here so `record` notifies under the same lock; receivers are
+    /// cheap clones handed out per request.
+    trace_wake: tokio::sync::watch::Sender<u64>,
+}
+
+impl Default for RequestLog {
+    fn default() -> Self {
+        Self {
+            total_requests: 0,
+            errors: 0,
+            providers: BTreeMap::new(),
+            recent_requests: Vec::new(),
+            sink: None,
+            seq: 0,
+            trace_wake: tokio::sync::watch::channel(0).0,
+        }
+    }
 }
 
 impl RequestLog {
+    /// Subscribe to `seq` changes for `/api/trace?wait=1`.
+    pub fn trace_subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.trace_wake.subscribe()
+    }
+
     /// Open (and create when needed) a JSONL history file.
     ///
     /// Invalid or truncated lines are ignored so a crash during an append or a
@@ -346,7 +402,9 @@ impl RequestLog {
     }
 
     /// Add one finished record and update every aggregate.
-    pub fn record(&mut self, record: RequestRecord) {
+    pub fn record(&mut self, mut record: RequestRecord) {
+        self.seq = self.seq.saturating_add(1);
+        record.seq = self.seq;
         self.persist(&record);
         self.total_requests = self.total_requests.saturating_add(1);
         let ok = record.status == "ok";
@@ -371,6 +429,35 @@ impl RequestLog {
             let overflow = self.recent_requests.len() - RECENT_LIMIT;
             self.recent_requests.drain(0..overflow);
         }
+        // Receivers that only poll `borrow()` see the latest seq on
+        // their next look; `wait=1` readers are woken here.
+        let _ = self.trace_wake.send(self.seq);
+    }
+
+    /// The log's change counter: `0` until the first request finishes,
+    /// then one more per record. Read with [`RequestLog::trace_since`].
+    pub fn seq(&self) -> u64 {
+        self.seq
+    }
+
+    /// The records that finished after `after`: everything when the log
+    /// restarted below the caller's seq, else the tail since it. Returns
+    /// the records plus the current seq, oldest first.
+    pub fn trace_since(&self, after: u64) -> (u64, Vec<RequestRecord>) {
+        // seq counts records since the process started; history loaded
+        // from disk predates it, so `after` alone cannot address them.
+        // The recent window's own started_unix_ms would mix them in, so
+        // the trace only ever serves this process's records: the first
+        // `seq` entries of the window are this run's, in order, while
+        // anything older was loaded and is skipped.
+        let this_run = self.seq as usize;
+        let skip = self.recent_requests.len().saturating_sub(this_run);
+        let served: Vec<RequestRecord> = self.recent_requests[skip..]
+            .iter()
+            .skip(after as usize)
+            .cloned()
+            .collect();
+        (self.seq, served)
     }
 
     /// A consistent copy for JSON rendering.
@@ -454,6 +541,11 @@ pub struct RequestTracker {
     record: RequestRecord,
     usage: Usage,
     reask_usage: Usage,
+    /// The index into `record.tries` the current send occupies and when
+    /// it went out; `record_attempt` writes the outcome there. A reask
+    /// of the same candidate keeps its try (the reference's Try).
+    try_index: Option<usize>,
+    try_started: Option<Instant>,
     finished: bool,
 }
 
@@ -471,6 +563,7 @@ impl RequestTracker {
             log,
             started_at: Instant::now(),
             record: RequestRecord {
+                seq: 0,
                 started_unix_ms: unix_ms(),
                 client_protocol: client_protocol.to_owned(),
                 requested_model: request.model.clone(),
@@ -491,6 +584,8 @@ impl RequestTracker {
             },
             usage: Usage::default(),
             reask_usage: Usage::default(),
+            try_index: None,
+            try_started: None,
             finished: false,
         }
     }
@@ -507,9 +602,53 @@ impl RequestTracker {
         self.record.rule = trace;
     }
 
-    /// Record a concrete upstream attempt without waiting for the full reply.
-    pub fn record_attempt(&self, provider: &str, key_slot: usize, status: &str) {
+    /// Record a concrete upstream attempt without waiting for the full
+    /// reply. The status also lands on the try the send is recorded as
+    /// (the last `push_try`), with the send's elapsed time; a reask of
+    /// the same candidate writes over the same try, as the reference's
+    /// Try does. A call with no try under way only counts the aggregate.
+    pub fn record_attempt(&mut self, provider: &str, key_slot: usize, status: &str) {
         lock(&self.log).record_attempt(provider, key_slot, status);
+        let Some(index) = self.try_index else {
+            return;
+        };
+        let elapsed = self
+            .try_started
+            .map(|started| elapsed_ms(started.elapsed()))
+            .unwrap_or(0);
+        if let Some(try_) = self.record.tries.get_mut(index) {
+            try_.status = status.to_owned();
+            try_.ms = elapsed;
+        }
+    }
+
+    /// How long the key rests because of the current try's outcome, for
+    /// its record: a quota or rate-limit cooldown set from this send's
+    /// failure. Written once, before the pool moves on.
+    pub fn rest_try(&mut self, rest: Duration) {
+        let Some(index) = self.try_index else {
+            return;
+        };
+        if let Some(try_) = self.record.tries.get_mut(index) {
+            try_.rest_ms = elapsed_ms(rest);
+        }
+    }
+
+    /// The current send's first bytes arrived: stamp the try's
+    /// time-to-first, once. Headers on a whole reply, the first event of
+    /// a stream; a send that never produced bytes keeps 0.
+    pub fn first_bytes(&mut self) {
+        let Some(index) = self.try_index else {
+            return;
+        };
+        let Some(started) = self.try_started else {
+            return;
+        };
+        if let Some(try_) = self.record.tries.get_mut(index)
+            && try_.first_ms == 0
+        {
+            try_.first_ms = elapsed_ms(started.elapsed());
+        }
     }
 
     /// Replace the route after fallback chooses a different provider.
@@ -519,8 +658,10 @@ impl RequestTracker {
         self.record.key_slot = key_slot;
     }
 
-    /// Note one upstream send: which member was asked, at which level.
-    /// `queued_ms` is how long the send waited for a slot and minute room.
+    /// Note one upstream send's reasoning level and how long it waited
+    /// for a slot and minute room, on the try `begin_attempt` opened.
+    /// A send refused before this — its lane full or its minute out —
+    /// keeps a try whose effort is empty.
     pub fn push_try(
         &mut self,
         provider: &str,
@@ -529,13 +670,16 @@ impl RequestTracker {
         effort: &str,
         queued_ms: u64,
     ) {
-        self.record.tries.push(TryRecord {
-            provider: provider.to_owned(),
-            model: model.to_owned(),
-            key_slot,
-            effort: effort.to_owned(),
-            queued_ms,
-        });
+        if self.try_index.is_none() {
+            self.begin_attempt(provider, model, key_slot);
+        }
+        if let Some(try_) = self
+            .try_index
+            .and_then(|index| self.record.tries.get_mut(index))
+        {
+            try_.effort = effort.to_owned();
+            try_.queued_ms = queued_ms;
+        }
     }
 
     /// Note one more round asked again within the group's patience, and
@@ -551,6 +695,19 @@ impl RequestTracker {
         self.set_route(provider, upstream_model, key_slot);
         self.usage = Usage::default();
         self.reask_usage = Usage::default();
+        self.record.tries.push(TryRecord {
+            provider: provider.to_owned(),
+            model: upstream_model.to_owned(),
+            key_slot,
+            effort: String::new(),
+            queued_ms: 0,
+            status: String::new(),
+            ms: 0,
+            first_ms: 0,
+            rest_ms: 0,
+        });
+        self.try_index = Some(self.record.tries.len() - 1);
+        self.try_started = Some(Instant::now());
     }
 
     /// Begin a same-candidate reask without mixing different routes or keys.
@@ -587,6 +744,19 @@ impl RequestTracker {
         self.usage.merge(usage);
         let total = self.total_usage();
         self.record.usage = UsageSnapshot::from(&total);
+        // A try still under way when the request ended — the client hung
+        // up mid-send, or a local stop came before the send did — takes
+        // the request's own status, and its ms runs to the end.
+        if let Some(index) = self.try_index
+            && let Some(try_) = self.record.tries.get_mut(index)
+            && try_.status.is_empty()
+        {
+            try_.status = status.to_owned();
+            try_.ms = self
+                .try_started
+                .map(|started| elapsed_ms(started.elapsed()))
+                .unwrap_or(0);
+        }
         let mut log = lock(&self.log);
         log.record(self.record.clone());
     }
@@ -660,6 +830,7 @@ mod tests {
 
     fn record(index: u64, status: &str) -> RequestRecord {
         RequestRecord {
+            seq: 0,
             started_unix_ms: index,
             client_protocol: "chat".into(),
             requested_model: format!("mock/model-{index}"),
