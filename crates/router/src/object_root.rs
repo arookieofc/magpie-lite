@@ -427,6 +427,7 @@ mod tests {
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             key_limits: Vec::new(),
             pin_upstream: false,

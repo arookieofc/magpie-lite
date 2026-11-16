@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod config_store;
+pub mod icons;
 pub mod provider_tools;
 pub mod providers;
 pub mod server;

@@ -201,6 +201,7 @@ export interface ProviderConfig {
   max_rpm?: number | null;
   queue_limit?: number | null;
   queue_wait_s?: number | null;
+  icon?: string;
 }
 
 export interface RuleTime {

@@ -113,6 +113,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/config/provider-tools/test",
             post(crate::provider_tools::test),
         )
+        .route("/config/icons", post(crate::icons::upload))
+        .route("/config/icons/favicon", post(crate::icons::favicon))
+        .route("/config/icons/url", post(crate::icons::url_icon))
         .route("/config/groups", post(create_group))
         .route(
             "/config/groups/{id}",
@@ -5351,6 +5354,7 @@ mod tests {
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             key_limits: Vec::new(),
             pin_upstream: false,

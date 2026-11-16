@@ -471,6 +471,54 @@ button:disabled { cursor: not-allowed; }
 }
 .vicon-probe { width: 1px; height: 1px; opacity: 0; position: absolute; pointer-events: none; }
 
+/* ── Custom provider dialog, mirroring upstream's dialog ──────────── */
+.cst { padding: 0; overflow: hidden; }
+.cst-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.cst-head h2 { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+.cst-head-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--surface-3); color: var(--muted); overflow: hidden; }
+.cst-head-icon .vicon { width: 30px; height: 30px; }
+.cst-grid { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 12px 14px; padding: 18px; align-items: start; }
+.cst-label { padding-top: 9px; font-size: 13px; color: var(--text); text-align: left; }
+.cst-base { display: grid; gap: 8px; min-width: 0; }
+.cst-segs { display: flex; flex-wrap: wrap; gap: 0; padding: 3px; border-radius: 10px; background: var(--surface-3); border: 1px solid var(--border); width: fit-content; max-width: 100%; }
+.cst-seg { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 550; padding: 6px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.cst-seg.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.cst-seg:disabled { opacity: .55; cursor: not-allowed; }
+.cst-detect-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
+.cst-keyrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.cst-keyrow .link { white-space: nowrap; }
+.cst-iconrow { display: flex; align-items: center; gap: 12px; min-width: 0; flex-wrap: wrap; }
+.cst-icon-now { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--surface-3); color: var(--muted); overflow: hidden; flex: none; }
+.cst-blank { display: block; }
+.cst-iconmenu { position: relative; display: inline-flex; }
+.cst-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: grid; min-width: 230px; padding: 6px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+.cst-menuitem { display: grid; gap: 1px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.cst-menuitem:hover:not(:disabled) { background: var(--hover); }
+.cst-menuitem:disabled { opacity: .55; cursor: not-allowed; }
+.cst-menu-name { font-size: 13px; font-weight: 600; }
+.cst-menu-note { font-size: 11.5px; color: var(--muted); }
+.cst-iconurlrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.cst-icongrid-wrap { display: grid; gap: 8px; min-width: 0; }
+.cst-icongrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 6px; max-height: 180px; overflow-y: auto; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.cst-iconopt { display: grid; place-items: center; padding: 4px; border-radius: 8px; border: 1px solid transparent; background: transparent; cursor: pointer; }
+.cst-iconopt:hover { background: var(--hover); }
+.cst-iconopt.on { border-color: var(--accent-line); background: var(--accent-soft); }
+.cst-modelsrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.cst-folds { display: grid; gap: 6px; }
+.cst-fold { border: 0; }
+.cst-fold summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); padding: 4px 0; }
+.cst-fold summary::before { content: ">"; color: var(--subtle); font-size: 12px; width: 12px; }
+.cst-fold[open] summary::before { content: "⌄"; }
+.cst-fold summary::-webkit-details-marker { display: none; }
+.cst-fold-body { display: grid; gap: 16px; padding: 8px 0 8px 18px; }
+.cst-msg { padding: 0 18px; }
+.cst-foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--surface-2); }
+@media (max-width: 640px) {
+  .cst-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .cst-label { padding-top: 6px; color: var(--muted); font-size: 12px; }
+  .cst-detect-row { grid-template-columns: minmax(0, 1fr); }
+}
+
 .card {
   min-width: 0;
   background: var(--surface);

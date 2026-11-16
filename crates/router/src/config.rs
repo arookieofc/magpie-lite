@@ -209,6 +209,12 @@ pub struct ProviderConfig {
     /// `PinUpstream`/`clinePin`, `cline_pin.go`). Off unless set.
     #[serde(default, skip_serializing_if = "is_false")]
     pub pin_upstream: bool,
+    /// Console icon: a vendored file under `ui/public/icons`
+    /// (`deepseek-color.svg`), an `https:` image URL, or a `data:` URL
+    /// from the Add sheet's file picker. Empty means the console falls
+    /// back to the vendor catalog match, then an initial avatar.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
     /// Process-local credential/endpoint version; never saved or disclosed.
     #[serde(skip)]
     pub key_generation: u64,
@@ -1384,6 +1390,10 @@ pub struct ProviderConfigSnapshot {
     pub queue_limit: Option<u32>,
     /// Seconds a request may wait in the queue; null for as long as it takes.
     pub queue_wait_s: Option<u32>,
+    /// Console icon, as stored on the provider. Empty means fall back
+    /// to the vendor catalog match, then an initial avatar.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub icon: String,
 }
 
 /// Capability metadata exposed by the secret-free configuration snapshot.
@@ -1925,6 +1935,7 @@ impl Config {
                     max_rpm: p.max_rpm,
                     queue_limit: p.queue_limit,
                     queue_wait_s: p.queue_wait_s,
+                    icon: p.icon.clone(),
                 })
                 .collect(),
             groups: self
@@ -2452,6 +2463,7 @@ base_url = "http://127.0.0.1:1/v1"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -2491,6 +2503,7 @@ base_url = "http://127.0.0.1:1/v1"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -2538,6 +2551,7 @@ base_url = "http://127.0.0.1:1/v1"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -2584,6 +2598,7 @@ base_url = "http://127.0.0.1:1/v1"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -2624,6 +2639,7 @@ base_url = "http://127.0.0.1:1/v1"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -2659,6 +2675,7 @@ base_url = "http://127.0.0.1:1/v1"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -2956,7 +2973,8 @@ base_url = "http://127.0.0.1:1/v1"
                 max_rpm: None,
                 queue_limit: None,
                 queue_wait_s: None,
-                key_generation: 0,
+                icon: String::new(),
+            key_generation: 0,
                 pin_upstream: false,
                 key_limits: Vec::new(),
             }],
@@ -3001,6 +3019,7 @@ base_url = "http://127.0.0.1:1/v1"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -3190,6 +3209,7 @@ affinity = "session"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -3305,6 +3325,7 @@ affinity = "session"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -3340,7 +3361,8 @@ affinity = "session"
                     max_rpm: None,
                     queue_limit: None,
                     queue_wait_s: None,
-                    key_generation: 0,
+                    icon: String::new(),
+            key_generation: 0,
                     pin_upstream: false,
                     key_limits: Vec::new(),
                 },
@@ -3365,7 +3387,8 @@ affinity = "session"
                     max_rpm: None,
                     queue_limit: None,
                     queue_wait_s: None,
-                    key_generation: 0,
+                    icon: String::new(),
+            key_generation: 0,
                     pin_upstream: false,
                     key_limits: Vec::new(),
                 },
@@ -3424,6 +3447,7 @@ affinity = "session"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -3659,6 +3683,7 @@ affinity = "session"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),
@@ -4038,6 +4063,7 @@ affinity = "session"
             max_rpm: None,
             queue_limit: None,
             queue_wait_s: None,
+            icon: String::new(),
             key_generation: 0,
             pin_upstream: false,
             key_limits: Vec::new(),

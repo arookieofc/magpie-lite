@@ -59,6 +59,11 @@ pub(crate) struct ProviderEdit {
     key_limits: Option<Vec<u32>>,
     /// Omitted on update to preserve the existing pinning.
     pin_upstream: Option<bool>,
+    /// Omitted on update to preserve the existing icon; `""` clears it
+    /// back to catalog-match-then-avatar. Accepts a vendored icon file,
+    /// an `https:` image URL, or a `data:` URL from the file picker.
+    #[serde(default)]
+    icon: Option<String>,
     #[serde(default)]
     make_default: bool,
 }
@@ -120,6 +125,9 @@ impl ProviderEdit {
         let queue_wait_s = self
             .queue_wait_s
             .or_else(|| existing.map(|p| p.queue_wait_s).unwrap_or_default());
+        let icon = self
+            .icon
+            .unwrap_or_else(|| existing.map(|p| p.icon.clone()).unwrap_or_default());
         ProviderConfig {
             id: self.id,
             name: self.name,
@@ -138,6 +146,7 @@ impl ProviderEdit {
             weights,
             key_limits,
             pin_upstream,
+            icon,
             affinity,
             max_concurrency,
             max_rpm,

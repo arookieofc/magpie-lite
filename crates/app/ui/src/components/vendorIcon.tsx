@@ -37,7 +37,30 @@ export default function VendorIcon({
 }) {
   const [failed, setFailed] = useState(false);
   if (!icon || failed) return <Avatar name={name} size={size} />;
-  const src = `icons/${icon}`;
+  // Direct images (uploaded `data:` URL, pasted `https:` URL, or an
+  // absolute path) render as-is; bare names resolve to vendored files.
+  const direct =
+    icon.startsWith("data:") ||
+    icon.startsWith("http://") ||
+    icon.startsWith("https://") ||
+    icon.startsWith("blob:") ||
+    icon.startsWith("/") ||
+    icon.includes("/");
+  const src = direct ? icon : `icons/${icon}`;
+  if (direct) {
+    return (
+      <span className={`vicon ${size}`} aria-hidden="true">
+        <img className="vicon-img" src={src} alt="" onError={() => setFailed(true)} />
+        <img
+          className="vicon-probe"
+          src={src}
+          alt=""
+          aria-hidden="true"
+          onError={() => setFailed(true)}
+        />
+      </span>
+    );
+  }
   // `-color` files are full-color pictures rendered directly; the rest
   // are single-tone masks tinted to the theme text color.
   if (icon.includes("-color")) {

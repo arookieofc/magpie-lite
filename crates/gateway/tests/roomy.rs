@@ -112,6 +112,7 @@ fn provider(id: &str, url: String, window: u64) -> ProviderConfig {
         max_rpm: None,
         queue_limit: None,
         queue_wait_s: None,
+        icon: String::new(),
         key_generation: 0,
         pin_upstream: false,
         key_limits: Vec::new(),

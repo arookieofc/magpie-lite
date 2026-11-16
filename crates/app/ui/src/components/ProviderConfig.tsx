@@ -16,6 +16,7 @@ import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Segmented, 
 import VendorIcon, { hostOf, presetIconForHost } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import AddProvider, { type PastedEndpoint } from "./AddProvider";
+import CustomProvider from "./CustomProvider";
 
 function policyLabel(v: string, t: TFunc): string {
   switch (v) {
@@ -61,6 +62,10 @@ function modelsLabel(p: Provider, t: TFunc): string {
   if (n === 1) return t("prov.oneModel");
   if (n > 1) return t("prov.nModels", { n });
   return t("prov.noModels");
+}
+
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 function keyPill(p: Provider, t: TFunc): { text: string; tone: string; title: string } {
@@ -130,6 +135,7 @@ interface Draft {
   keyMode: string;
   keys: string;
   testModel: string;
+  icon: string;
 }
 
 function blankDraft(isFirst: boolean): Draft {
@@ -140,7 +146,7 @@ function blankDraft(isFirst: boolean): Draft {
     baseUrl: "", models: "", contexts: "", outputs: "", freeModels: "", fallback: "",
     routing: "rotate", affinity: "auto", weights: "", keyLimits: "",
     cooldown: "", maxConcurrency: "", maxRpm: "", queueLimit: "", queueWait: "",
-    pinUpstream: false, makeDefault: isFirst, keyMode: "replace", keys: "", testModel: "",
+    pinUpstream: false, makeDefault: isFirst, keyMode: "replace", keys: "", testModel: "", icon: "",
   };
 }
 
@@ -171,7 +177,7 @@ function draftFrom(p: Provider, isDefault: boolean): Draft {
     queueWait: p.queue_wait_s == null ? "" : String(p.queue_wait_s),
     pinUpstream: p.pin_upstream ?? false,
     makeDefault: isDefault,
-    keyMode: "keep", keys: "", testModel: "",
+    keyMode: "keep", keys: "", testModel: "", icon: p.icon ?? "",
   };
 }
 
@@ -225,6 +231,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   // `adding` page state. It opens on first use, when no provider exists.
   const [adding, setAdding] = useState(false);
   const [presets, setPresets] = useState<VendorPreset[] | null>(null);
+  const [customMode, setCustomMode] = useState(false);
+  const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
   const booted = useRef(false);
   useEffect(() => {
     if (!booted.current && config) {
@@ -262,6 +270,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     if (busy) return;
     setAdding(false);
     setEditing(null);
+    setCustomMode(true);
+    setCustomUrls({});
     const draft = blankDraft(providers.length === 0);
     if (prefill?.baseUrl) draft.baseUrl = prefill.baseUrl;
     if (prefill?.keys) {
@@ -280,6 +290,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     while (used.has(id)) id = `${pr.id}-${n++}`;
     setAdding(false);
     setEditing(null);
+    setCustomMode(false);
     setDraft({
       ...blankDraft(providers.length === 0),
       id,
@@ -296,6 +307,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     if (busy) return;
     setAdding(false);
     setEditing(p.id);
+    setCustomMode(false);
     setDraft(draftFrom(p, config?.default_provider === p.id));
     setMessage("");
     setDiscovered([]);
@@ -303,6 +315,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
 
   function close() {
     setEditing(false);
+    setCustomMode(false);
     setMessage("");
   }
 
@@ -332,8 +345,29 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     ].filter(Boolean) as string[];
     if (!supported.includes(draft.protocol)) supported.push(draft.protocol);
 
+    let id = draft.id.trim();
+    if (!id && customMode && editing === null) {
+      const used = new Set(providers.map((p) => p.id));
+      id = slug(draft.name.trim()) || "relay";
+      if (!used.has(id)) {
+        // keep slug
+      } else {
+        let n = 2;
+        while (used.has(`${id}-${n}`)) n++;
+        id = `${id}-${n}`;
+      }
+      if (!draft.name.trim()) {
+        setMessage(t("prov.giveName"));
+        return null;
+      }
+    }
+    if (!id) {
+      setMessage(t("prov.giveName"));
+      return null;
+    }
+
     const body: Record<string, unknown> = {
-      id: draft.id.trim(),
+      id,
       name: draft.name.trim(),
       protocol: draft.protocol,
       capabilities: {
@@ -360,6 +394,10 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       key_limits: keyLimits.values,
       weights: [],
     };
+    // Stored icon: builtin file, https: URL, or data: URL. Empty clears
+    // back to catalog-match-then-avatar. Omitted on update preserves it.
+    if (customMode || draft.icon.trim()) body.icon = draft.icon.trim();
+    else if (editing !== null) body.icon = draft.icon.trim();
     if (draft.routing === "weight") {
       const weights = listOfNums(draft.weights, t("prov.lblKeyWeights"), t);
       if (!weights.ok) return setMessage(weights.error!), null;
@@ -449,6 +487,34 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     }
   }
 
+  // Get-icon menu: the gateway validates the picture server-side and
+  // hands back a small `data:` URL. A usable picture that fell through
+  // clears back to the letter avatar with the reason, like upstream.
+  async function fetchIcon(path: "favicon" | "url" | "", payload: Record<string, string>) {
+    if (busy) return;
+    if (path === "favicon" && !draft.baseUrl.trim()) {
+      setMessage(t("prov.needBase"));
+      return;
+    }
+    setBusy(true);
+    setMessage(t("prov.iconLooking"));
+    try {
+      const target = path === "" ? "/config/icons" : `/config/icons/${path}`;
+      const data = await api.post<{ icon?: string; failed?: string }>(target, payload);
+      if (data.failed) {
+        set({ icon: "" });
+        setMessage(t("prov.iconFailed", { why: data.failed }));
+      } else {
+        set({ icon: data.icon ?? "" });
+        setMessage("");
+      }
+    } catch (err) {
+      setMessage((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const showKeys = draft.keyMode === "replace";
 
   const triOptions = (
@@ -457,6 +523,149 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       <option value="true">{t("common.yes")}</option>
       <option value="false">{t("common.no")}</option>
     </>
+  );
+
+  const switchCustomProtocol = (v: string) => {
+    setCustomUrls((m) => ({ ...m, [draft.protocol]: draft.baseUrl }));
+    const next = customUrls[v] ?? "";
+    const patch: Partial<Draft> = { protocol: v, baseUrl: next };
+    if (v === "chat") patch.capChat = true;
+    if (v === "responses") patch.capResponses = true;
+    if (v === "anthropic") patch.capAnthropic = true;
+    if (v === "gemini") patch.capGemini = true;
+    set(patch);
+  };
+
+  // Advanced + limits stay available inside the custom dialog's
+  // collapsed section, reusing the same draft fields as the full editor.
+  const customAdvanced = (
+    <>
+      <FormSection title={t("prov.secModels")} description={t("prov.secModelsDesc")}>
+        <Field label={t("prov.fContexts")} htmlFor="cst-contexts" help={t("prov.fContextsHelp")}>
+          <textarea id="cst-contexts" className="input mono" rows={3} placeholder={"deepseek-chat=131072\ndeepseek-reasoner=65536"}
+            value={draft.contexts} onChange={(e) => set({ contexts: e.target.value })} />
+        </Field>
+        <Field label={t("prov.fOutputs")} htmlFor="cst-outputs" help={t("prov.fOutputsHelp")}>
+          <textarea id="cst-outputs" className="input mono" rows={3} placeholder={"claude-sonnet-4-5=32000\ngpt-5-mini=16384"}
+            value={draft.outputs} onChange={(e) => set({ outputs: e.target.value })} />
+        </Field>
+        <Field label={t("prov.fFree")} htmlFor="cst-free" help={t("prov.fFreeHelp")}>
+          <textarea id="cst-free" className="input mono" rows={3} placeholder={"deepseek-v4.1-flash\nglm-5.3"}
+            value={draft.freeModels} onChange={(e) => set({ freeModels: e.target.value })} />
+        </Field>
+        <Field label={t("prov.fFallback")} htmlFor="cst-fallback" help={t("prov.fFallbackHelp")}>
+          <textarea id="cst-fallback" className="input mono" rows={3} placeholder={"backup/model\ngroup/daily"}
+            value={draft.fallback} onChange={(e) => set({ fallback: e.target.value })} />
+        </Field>
+      </FormSection>
+      <FormSection title={t("prov.secKeyRouting")} description={t("prov.secKeyRoutingDesc")}>
+        <div className="form-grid">
+          <Field label={t("prov.fKeyRouting")} htmlFor="cst-routing">
+            <select id="cst-routing" className="input"
+              value={draft.routing} onChange={(e) => set({ routing: e.target.value })}>
+              <option value="rotate">{t("prov.optRotate")}</option>
+              <option value="order">{t("prov.optOrder")}</option>
+              <option value="usage">{t("prov.optUsage")}</option>
+              <option value="free_first">{t("prov.optFreeFirst")}</option>
+              <option value="weight">{t("prov.optWeight")}</option>
+            </select>
+          </Field>
+          <Field label={t("prov.fAffinity")} htmlFor="cst-affinity">
+            <select id="cst-affinity" className="input"
+              value={draft.affinity} onChange={(e) => set({ affinity: e.target.value })}>
+              <option value="auto">{t("prov.optAuto")}</option>
+              <option value="session">{t("prov.optSession")}</option>
+              <option value="turn">{t("prov.optTurn")}</option>
+              <option value="off">{t("prov.optOff")}</option>
+            </select>
+          </Field>
+        </div>
+        <Switch checked={draft.pinUpstream} onChange={(v) => set({ pinUpstream: v })}>
+          {t("prov.pin")}
+        </Switch>
+      </FormSection>
+      <FormSection title={t("prov.secLimits")} description={t("prov.secLimitsDesc")}>
+        <div className="form-grid">
+          <Field label={t("prov.fCooldown")} htmlFor="cst-cooldown" help={t("prov.fCooldownHelp")}>
+            <input id="cst-cooldown" className="input" type="number" min="0" step="1"
+              placeholder={t("prov.cooldownPh")}
+              value={draft.cooldown} onChange={(e) => set({ cooldown: e.target.value })} />
+          </Field>
+          <Field label={t("prov.fMaxConc")} htmlFor="cst-max-conc">
+            <input id="cst-max-conc" className="input" type="number" min="0" step="1"
+              placeholder={t("prov.noLimit")}
+              value={draft.maxConcurrency} onChange={(e) => set({ maxConcurrency: e.target.value })} />
+          </Field>
+          <Field label={t("prov.fMaxRpm")} htmlFor="cst-max-rpm">
+            <input id="cst-max-rpm" className="input" type="number" min="0" step="1"
+              placeholder={t("prov.noLimit")}
+              value={draft.maxRpm} onChange={(e) => set({ maxRpm: e.target.value })} />
+          </Field>
+        </div>
+        <Switch checked={draft.makeDefault} onChange={(v) => set({ makeDefault: v })}>
+          {t("prov.makeDefault")}
+        </Switch>
+      </FormSection>
+      <FormSection title={t("prov.secEndpoint")} description={t("prov.capsHelp")}>
+        <fieldset className="choice-field">
+          <legend>{t("prov.caps")}</legend>
+          <div className="check-chips">
+            <label><input type="checkbox" checked={draft.capChat} onChange={(e) => set({ capChat: e.target.checked })} /><span>Chat</span></label>
+            <label><input type="checkbox" checked={draft.capResponses} onChange={(e) => set({ capResponses: e.target.checked })} /><span>Responses</span></label>
+            <label><input type="checkbox" checked={draft.capAnthropic} onChange={(e) => set({ capAnthropic: e.target.checked })} /><span>Anthropic</span></label>
+            <label><input type="checkbox" checked={draft.capGemini} onChange={(e) => set({ capGemini: e.target.checked })} /><span>Gemini</span></label>
+          </div>
+        </fieldset>
+        <div className="form-grid three">
+          <Field label={t("prov.capStreaming")} htmlFor="cst-streaming">
+            <select id="cst-streaming" className="input"
+              value={draft.capStreaming} onChange={(e) => set({ capStreaming: e.target.value })}>
+              {triOptions}
+            </select>
+          </Field>
+          <Field label={t("prov.capTools")} htmlFor="cst-tools">
+            <select id="cst-tools" className="input"
+              value={draft.capTools} onChange={(e) => set({ capTools: e.target.value })}>
+              {triOptions}
+            </select>
+          </Field>
+          <Field label={t("prov.capVision")} htmlFor="cst-vision">
+            <select id="cst-vision" className="input"
+              value={draft.capVision} onChange={(e) => set({ capVision: e.target.value })}>
+              {triOptions}
+            </select>
+          </Field>
+        </div>
+      </FormSection>
+    </>
+  );
+
+  const customForm = (
+    <CustomProvider
+      draft={{
+        name: draft.name,
+        protocol: draft.protocol,
+        baseUrl: draft.baseUrl,
+        keys: draft.keys,
+        models: draft.models,
+        testModel: draft.testModel,
+        icon: draft.icon,
+      }}
+      set={(patch) => set(patch as Partial<Draft>)}
+      busy={busy}
+      message={message}
+      presets={presets}
+      onProtocol={switchCustomProtocol}
+      onDetect={() => tool("models")}
+      onTestEach={() => tool("test")}
+      onFetchModels={() => tool("models")}
+      onAutoIcon={() => fetchIcon("favicon", { url: draft.baseUrl, name: draft.name })}
+      onIconUrl={(url) => fetchIcon("url", { url, base: draft.baseUrl, name: draft.name })}
+      onIconFile={(data) => fetchIcon("", { data })}
+      onCancel={close}
+      onSave={save}
+      advanced={customAdvanced}
+    />
   );
 
   // The inline editor: the same FormSection body the Sheet had, rendered
@@ -711,7 +920,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         />
       ) : null}
 
-      {editing === null && !adding ? <Card flush>{editorForm}</Card> : null}
+      {editing === null && !adding && customMode ? customForm : null}
+      {editing === null && !adding && !customMode ? <Card flush>{editorForm}</Card> : null}
 
       {!adding && config === null ? (
         <div className="pv-list" aria-busy="true" aria-label={t("side.loading")}>
@@ -782,7 +992,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                       >
                         <VendorIcon
                           name={p.name || p.id}
-                          icon={presetIconForHost(presets, hostOf(p.base_url))}
+                          icon={p.icon || presetIconForHost(presets, hostOf(p.base_url))}
                         />
                         <span className="pv-who">
                           <span className="pv-name">
