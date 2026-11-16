@@ -456,6 +456,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       await api.del(`/config/providers/${encodeURIComponent(p.id)}`);
       setMessage(t("prov.deleted"));
       onChanged();
+      // The row is gone: drop the editor but keep the notice, which the
+      // list shows once the editor closes.
+      setEditing(false);
+      setCustomMode(false);
+      setPreset(null);
     } catch (err) {
       setMessage((err as Error).message);
     } finally {
@@ -677,6 +682,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
 
   // The inline editor: the same FormSection body the Sheet had, rendered
   // inside the provider's card (or a stand-alone card for a new provider).
+  // The row being edited, so the footer can offer upstream's Remove
+  // for an existing provider and hide it for a new draft.
+  const editingProvider = typeof editing === "string"
+    ? (providers.find((p) => p.id === editing) ?? null)
+    : null;
   const editorForm = (
     <form className="editor" onSubmit={save} autoComplete="off">
       <div className="editor-head">
@@ -707,7 +717,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                 value={draft.id} onChange={(e) => set({ id: e.target.value })} />
             </Field>
             <Field label={t("prov.fName")} htmlFor="provider-name" help={t("prov.fNameHelp")}>
-              <input id="provider-name" className="input" placeholder="DeepSeek"
+              <input id="provider-name" className="input" placeholder={t("prov.namePh")}
                 value={draft.name} onChange={(e) => set({ name: e.target.value })} />
             </Field>
             <Field label={t("prov.fProtocol")} htmlFor="provider-protocol">
@@ -801,7 +811,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
             value={draft.keyMode}
             onChange={(value) => set({ keyMode: value })}
             options={[
-              { value: "keep", label: t("prov.keepKeys"), disabled: editing === null },
+              // No saved keys on a new provider, so upstream shows no keep
+              // affordance either: only existing rows can keep theirs.
+              ...(editing === null
+                ? []
+                : [{ value: "keep", label: t("prov.keepKeys"), disabled: false }]),
               { value: "replace", label: t("prov.replaceKeys") },
               { value: "clear", label: t("prov.noAuthOpt") },
             ]}
@@ -886,10 +900,15 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         </FormSection>
       </div>
       <div className="editor-foot">
+        {editingProvider ? (
+          <button type="button" className="btn danger" onClick={() => remove(editingProvider)} disabled={busy}>
+            {t("prov.remove")}
+          </button>
+        ) : null}
+        <span className="spacer" />
         <button type="button" className="btn ghost" onClick={close} disabled={busy}>
           {t("common.cancel")}
         </button>
-        <span className="spacer" />
         <button type="button" className="btn" onClick={() => tool("models")} disabled={busy}>
           <ScanSearch size={14} aria-hidden="true" />
           {t("prov.discover")}

@@ -317,6 +317,7 @@ export const zh = {
   "prov.delAria": "删除提供商 {id}",
   "prov.delTitle_attr": "删除",
   "prov.delConfirm": "删除提供商 {id}？请先移除其分组与兜底引用。用到它的智能体需要换路由。",
+  "prov.remove": "删除",
   "prov.secEndpoint": "接入点",
   "prov.secEndpointDesc": "网关如何连到该提供商。",
   "prov.fId": "提供商 ID",

@@ -317,6 +317,7 @@ export const en = {
   "prov.delAria": "Delete provider {id}",
   "prov.delTitle_attr": "Delete",
   "prov.delConfirm": "Delete provider {id}? Remove its group and fallback references first. Agents using it will need another route.",
+  "prov.remove": "Remove",
   "prov.secEndpoint": "Endpoint",
   "prov.secEndpointDesc": "How the gateway reaches this provider.",
   "prov.fId": "Provider ID",
