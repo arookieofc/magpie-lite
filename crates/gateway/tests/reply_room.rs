@@ -167,6 +167,8 @@ async fn gateway(protocol: Protocol, upstream: String) -> String {
             api_key: "fixture-key".into(),
             api_keys: Vec::new(),
             models: vec!["mock-model".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),

@@ -5,6 +5,7 @@ pub mod config_store;
 pub mod icons;
 pub mod provider_tools;
 pub mod providers;
+pub mod retrieval;
 pub mod server;
 pub mod upstream;
 pub mod usage;

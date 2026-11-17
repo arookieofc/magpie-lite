@@ -19,6 +19,7 @@ import AddProvider, { type PastedEndpoint } from "./AddProvider";
 import CustomProvider from "./CustomProvider";
 import QuickAdd from "./QuickAdd";
 import { curlFill, originOfUrl, splitKeys, withOriginUrl } from "../util";
+import { servesOf } from "../serves";
 
 function policyLabel(v: string, t: TFunc): string {
   switch (v) {
@@ -61,9 +62,9 @@ function routingSummary(p: Provider, t: TFunc): string {
 // with the full editor expanding under the selected row.
 function modelsLabel(p: Provider, t: TFunc): string {
   const n = (p.models ?? []).length;
-  if (n === 1) return t("prov.oneModel");
-  if (n > 1) return t("prov.nModels", { n });
-  return t("prov.noModels");
+  const base = n === 1 ? t("prov.oneModel") : n > 1 ? t("prov.nModels", { n }) : t("prov.noModels");
+  const extra = (p.embeddings ?? []).length + (p.rerankers ?? []).length;
+  return extra > 0 ? `${base} · ${t("prov.nRetrieval", { n: extra })}` : base;
 }
 
 function slug(s: string): string {
@@ -119,6 +120,8 @@ interface Draft {
   capVision: string;
   baseUrl: string;
   models: string;
+  embeddings: string;
+  rerankers: string;
   contexts: string;
   outputs: string;
   freeModels: string;
@@ -146,7 +149,7 @@ function blankDraft(isFirst: boolean): Draft {
     id: "", name: "", protocol: "chat",
     capChat: true, capResponses: false, capAnthropic: false, capGemini: false,
     capStreaming: "", capTools: "", capVision: "",
-    baseUrl: "", models: "", contexts: "", outputs: "", freeModels: "", fallback: "",
+    baseUrl: "", models: "", embeddings: "", rerankers: "", contexts: "", outputs: "", freeModels: "", fallback: "",
     routing: "rotate", affinity: "auto", weights: "", keyLimits: "",
     cooldown: "", maxConcurrency: "", maxRpm: "", queueLimit: "", queueWait: "",
     pinUpstream: false, makeDefault: isFirst, keyMode: "replace", keys: "", testModel: "", icon: "",
@@ -168,6 +171,8 @@ function draftFrom(p: Provider, isDefault: boolean): Draft {
     baseUrl: p.base_url,
     serverAddress: originOfUrl(p.base_url),
     models: (p.models ?? []).join("\n"),
+    embeddings: (p.embeddings ?? []).join("\n"),
+    rerankers: (p.rerankers ?? []).join("\n"),
     contexts: Object.entries(p.contexts ?? {}).map(([m, w]) => `${m}=${w}`).join("\n"),
     outputs: Object.entries(p.outputs ?? {}).map(([m, l]) => `${m}=${l}`).join("\n"),
     freeModels: (p.free_models ?? []).join("\n"),
@@ -545,6 +550,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       },
       base_url: draft.baseUrl.trim(),
       models: lines(draft.models),
+      embeddings: lines(draft.embeddings),
+      rerankers: lines(draft.rerankers),
       contexts: contexts.map,
       outputs: outputs.map,
       free_models: lines(draft.freeModels),
@@ -648,7 +655,19 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       );
       if (operation === "models") {
         const found = result.models ?? [];
-        setDraft((d) => ({ ...d, models: [...new Set([...lines(d.models), ...found])].join("\n") }));
+        setDraft((d) => {
+          const patch: Partial<Draft> = {};
+          for (const id of found) {
+            const bucket = servesOf(id) === "embedding" ? "embeddings"
+              : servesOf(id) === "rerank" ? "rerankers" : "models";
+            const current = lines(d[bucket]);
+            if (!current.includes(id)) patch[bucket] = [...current, id].join("\n");
+          }
+          for (const bucket of ["models", "embeddings", "rerankers"] as const) {
+            if (patch[bucket] === undefined) patch[bucket] = lines(d[bucket]).join("\n");
+          }
+          return { ...d, ...patch };
+        });
         setDiscovered(found);
         setMessage(t("prov.discovered", { n: found.length }));
       } else {
@@ -823,6 +842,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         altUrls: customUrls,
         keys: draft.keys,
         models: draft.models,
+        embeddings: draft.embeddings,
+        rerankers: draft.rerankers,
         testModel: draft.testModel,
         icon: draft.icon,
       }}
@@ -1145,6 +1166,16 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
             <textarea id="provider-models" className="input mono" rows={4} placeholder={"deepseek-chat\ndeepseek-reasoner"}
               value={draft.models} onChange={(e) => set({ models: e.target.value })} />
           </Field>
+          <div className="form-grid">
+            <Field label={t("prov.fEmbeddings")} htmlFor="provider-embeddings" help={t("prov.fEmbeddingsHelp")}>
+              <textarea id="provider-embeddings" className="input mono" rows={2} placeholder={"text-embedding-3-small\nbge-m3"}
+                value={draft.embeddings} onChange={(e) => set({ embeddings: e.target.value })} />
+            </Field>
+            <Field label={t("prov.fRerankers")} htmlFor="provider-rerankers" help={t("prov.fRerankersHelp")}>
+              <textarea id="provider-rerankers" className="input mono" rows={2} placeholder={"bge-reranker-v2-m3\nrerank-3-lite"}
+                value={draft.rerankers} onChange={(e) => set({ rerankers: e.target.value })} />
+            </Field>
+          </div>
           <div className="form-grid">
             <Field label={t("prov.fContexts")} htmlFor="provider-contexts" help={t("prov.fContextsHelp")}>
               <textarea id="provider-contexts" className="input mono" rows={3} placeholder={"deepseek-chat=131072\ndeepseek-reasoner=65536"}

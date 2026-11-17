@@ -566,6 +566,14 @@ button:disabled { cursor: not-allowed; }
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .mchip.pick.on::before { visibility: visible; }
+.mchip-group {
+  display: contents;
+}
+.mchip-label {
+  flex-basis: 100%; height: 16px; margin: 4px 2px 0;
+  font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--subtle);
+}
 .cst-folds { display: grid; gap: 6px; }
 .cst-fold { border: 0; }
 .cst-fold summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); padding: 4px 0; }

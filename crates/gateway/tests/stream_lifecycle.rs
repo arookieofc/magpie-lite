@@ -311,6 +311,8 @@ impl Fixture {
             api_key: "secret-upstream-key".into(),
             api_keys: extra_keys,
             models: vec!["up-model".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),

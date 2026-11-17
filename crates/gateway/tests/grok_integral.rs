@@ -320,6 +320,8 @@ impl Fixture {
                         api_key: KEY.into(),
                         api_keys: Vec::new(),
                         models: vec!["grok-4.6".into(), "gpt-5.5".into()],
+                        embeddings: Vec::new(),
+                        rerankers: Vec::new(),
                         contexts: Default::default(),
                         outputs: Default::default(),
                         free_models: Default::default(),

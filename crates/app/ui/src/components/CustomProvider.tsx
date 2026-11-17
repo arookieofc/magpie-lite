@@ -5,6 +5,7 @@ import VendorIcon from "./vendorIcon";
 import { useT } from "../i18n";
 import type { VendorPreset } from "../types";
 import { curlFill, splitKeys } from "../util";
+import { servesOf } from "../serves";
 
 export interface CustomDraft {
   name: string;
@@ -13,6 +14,8 @@ export interface CustomDraft {
   altUrls: Record<string, string>;
   keys: string;
   models: string;
+  embeddings: string;
+  rerankers: string;
   testModel: string;
   icon: string;
 }
@@ -126,7 +129,24 @@ export default function CustomProvider({
   const shownIcons = !q ? icons : icons.filter((n) => n.replace(/-color$/, "").toLowerCase().includes(q));
 
   const pickedIds = useMemo(() => draft.models.split(/\r?\n/).filter(Boolean), [draft.models]);
+  const pickedEmbeddings = useMemo(() => draft.embeddings.split(/\r?\n/).filter(Boolean), [draft.embeddings]);
+  const pickedRerankers = useMemo(() => draft.rerankers.split(/\r?\n/).filter(Boolean), [draft.rerankers]);
   const pickedSet = useMemo(() => new Set(pickedIds), [pickedIds]);
+  const pickedEmbeddingSet = useMemo(() => new Set(pickedEmbeddings), [pickedEmbeddings]);
+  const pickedRerankerSet = useMemo(() => new Set(pickedRerankers), [pickedRerankers]);
+
+  // The bucket a chip writes to when it is toggled or added: its own
+  // `servesOf` class when that one has a list, else chat.
+  const bucketOf = (id: string): "models" | "embeddings" | "rerankers" => {
+    switch (servesOf(id)) {
+      case "embedding":
+        return "embeddings";
+      case "rerank":
+        return "rerankers";
+      default:
+        return "models";
+    }
+  };
 
   const pool = useMemo(() => {
     const seen = new Set<string>();
@@ -152,17 +172,40 @@ export default function CustomProvider({
     return pool.filter((id) => id.toLowerCase().includes(f));
   }, [pool, modelFilter]);
 
+  const lists = {
+    models: { ids: pickedIds, set: pickedSet },
+    embeddings: { ids: pickedEmbeddings, set: pickedEmbeddingSet },
+    rerankers: { ids: pickedRerankers, set: pickedRerankerSet },
+  } as const;
+
+  const setBucket = (bucket: keyof typeof lists, ids: string[]) => {
+    set({ [bucket]: ids.join("\n") } as Partial<CustomDraft>);
+  };
+
   const toggleModel = (id: string) => {
-    const next = pickedSet.has(id) ? pickedIds.filter((x) => x !== id) : [...pickedIds, id];
-    set({ models: next.join("\n") });
+    const bucket = bucketOf(id);
+    const { ids, set: picked } = lists[bucket];
+    const next = picked.has(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    setBucket(bucket, next);
   };
   const pickAll = () => {
-    const next = [...new Set([...pickedIds, ...filteredPool])];
-    set({ models: next.join("\n") });
+    const patch: Partial<CustomDraft> = {};
+    for (const bucket of ["models", "embeddings", "rerankers"] as const) {
+      const inBucket = filteredPool.filter((id) => bucketOf(id) === bucket);
+      if (inBucket.length) {
+        patch[bucket] = [...new Set([...lists[bucket].ids, ...inBucket])].join("\n");
+      }
+    }
+    set(patch);
   };
   const pickNone = () => {
     const drop = new Set(filteredPool);
-    set({ models: pickedIds.filter((x) => !drop.has(x)).join("\n") });
+    const patch: Partial<CustomDraft> = {};
+    for (const bucket of ["models", "embeddings", "rerankers"] as const) {
+      const next = lists[bucket].ids.filter((x) => !drop.has(x));
+      if (next.length !== lists[bucket].ids.length) patch[bucket] = next.join("\n");
+    }
+    set(patch);
   };
   const addModel = () => {
     const ids = modelAddInput
@@ -170,8 +213,14 @@ export default function CustomProvider({
       .map((s) => s.trim())
       .filter(Boolean);
     if (!ids.length) return;
-    const next = [...new Set([...pickedIds, ...ids])];
-    set({ models: next.join("\n") });
+    const patch: Partial<CustomDraft> = {};
+    for (const bucket of ["models", "embeddings", "rerankers"] as const) {
+      const inBucket = ids.filter((id) => bucketOf(id) === bucket);
+      if (inBucket.length) {
+        patch[bucket] = [...new Set([...lists[bucket].ids, ...inBucket])].join("\n");
+      }
+    }
+    set(patch);
     setModelAddInput("");
   };
 
@@ -462,7 +511,10 @@ export default function CustomProvider({
             </button>
             <span className="grow" />
             <span className="hint" role="status">
-              {t("prov.pickedOf", { n: pickedIds.length, all: pool.length })}
+              {t("prov.pickedOf", {
+                n: pickedIds.length + pickedEmbeddings.length + pickedRerankers.length,
+                all: pool.length,
+              })}
             </span>
           </div>
           {pool.length > 24 ? (
@@ -477,19 +529,30 @@ export default function CustomProvider({
           ) : null}
           {pool.length ? (
             <div className="mchips" role="listbox" aria-label={t("prov.secModels")} aria-multiselectable="true">
-              {filteredPool.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="option"
-                  aria-selected={pickedSet.has(id)}
-                  className={`mchip pick${pickedSet.has(id) ? " on" : ""}`}
-                  onClick={() => toggleModel(id)}
-                  title={id}
-                >
-                  {id}
-                </button>
-              ))}
+              {(["models", "embeddings", "rerankers"] as const).map((bucket) => {
+                const rows = filteredPool.filter((id) => bucketOf(id) === bucket);
+                if (!rows.length) return null;
+                return (
+                  <div key={bucket} className="mchip-group">
+                    {bucket !== "models" ? (
+                      <span className="mchip-label">{t(`prov.serves.${bucket}` as Parameters<typeof t>[0])}</span>
+                    ) : null}
+                    {rows.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="option"
+                        aria-selected={lists[bucket].set.has(id)}
+                        className={`mchip pick${lists[bucket].set.has(id) ? " on" : ""}`}
+                        onClick={() => toggleModel(id)}
+                        title={id}
+                      >
+                        {id}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
               {!filteredPool.length ? (
                 <span className="hint">{t("prov.noMatchModel", { q: modelFilter.trim() })}</span>
               ) : null}

@@ -242,6 +242,8 @@ async fn fixture() -> Fixture {
             api_key: KEY.into(),
             api_keys: vec![],
             models: vec!["mock-model".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),

@@ -146,6 +146,8 @@ export interface ProviderConfig {
   capabilities?: ProviderCapabilities;
   base_url: string;
   models: string[];
+  embeddings?: string[];
+  rerankers?: string[];
   contexts?: Record<string, number>;
   outputs?: Record<string, number>;
   free_models?: string[];

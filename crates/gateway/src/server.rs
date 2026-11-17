@@ -86,6 +86,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/v1beta/models", get(gemini_models))
         .route("/v1beta/models/{*model}", post(gemini_generate))
         .route("/v1/models", get(list_models))
+        // Retrieval calls that are not chats: the body goes to the
+        // model's provider untranslated at its OpenAI-style base + path
+        // (the reference's `retrieve`, embeddings.go).
+        .route("/v1/embeddings", post(crate::retrieval::embeddings))
+        .route("/v1/rerank", post(crate::retrieval::rerank))
         // An Ollama-shaped server, for a client that takes a custom
         // endpoint only as one (Visual Studio's and VS Code's Copilot
         // BYOK; the reference's `ollama.go`, 94df2392).
@@ -5341,6 +5346,8 @@ mod tests {
             api_key: "private-test-key".into(),
             api_keys: vec![],
             models: vec![model.into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),

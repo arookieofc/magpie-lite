@@ -134,6 +134,15 @@ pub struct ProviderConfig {
     /// Known model ids, for bare-name routing and the catalog.
     #[serde(default)]
     pub models: Vec<String>,
+    /// Embedding model ids served at `/v1/embeddings`: non-chat models,
+    /// kept out of agents' chat pickers like the reference's
+    /// `provider.Embeddings`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub embeddings: Vec<String>,
+    /// Rerank model ids served at `/v1/rerank`: non-chat models, kept out
+    /// of agents' chat pickers like the reference's `provider.Rerankers`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rerankers: Vec<String>,
     /// Known context windows by model id, in tokens, for room-aware group
     /// selection: a member whose model cannot hold the request is not asked it.
     /// A model absent here has no known window.
@@ -280,6 +289,17 @@ impl ProviderConfig {
         {
             anyhow::bail!("model ids must be non-empty and contain no whitespace");
         }
+        for (field, list) in [
+            ("embedding models", &self.embeddings),
+            ("rerank models", &self.rerankers),
+        ] {
+            if list
+                .iter()
+                .any(|m| m.is_empty() || m.chars().any(char::is_whitespace))
+            {
+                anyhow::bail!("{field} need non-empty model ids with no whitespace");
+            }
+        }
         if self.contexts.iter().any(|(model, window)| {
             model.is_empty() || model.chars().any(char::is_whitespace) || *window == 0
         }) {
@@ -374,6 +394,16 @@ impl ProviderConfig {
         self.free_models
             .iter()
             .any(|free| free.eq_ignore_ascii_case(model))
+    }
+
+    /// Whether any of the provider's listed models — chat, embedding or
+    /// rerank — is `model`: a route is spelled as written when it names
+    /// one, so a fixed-effort suffix is not mistaken for part of the id
+    /// (`member_effort`).
+    pub fn serves(&self, model: &str) -> bool {
+        self.models.iter().any(|m| m == model)
+            || self.embeddings.iter().any(|m| m == model)
+            || self.rerankers.iter().any(|m| m == model)
     }
 
     /// How many requests may be out at once on one of its keys, 0 for no
@@ -1344,6 +1374,14 @@ pub struct ProviderConfigSnapshot {
     pub base_url: String,
     /// Models explicitly listed for bare-name routing and `/v1/models`.
     pub models: Vec<String>,
+    /// Embedding model ids served at `/v1/embeddings`, kept out of agents'
+    /// chat pickers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub embeddings: Vec<String>,
+    /// Rerank model ids served at `/v1/rerank`, kept out of agents' chat
+    /// pickers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rerankers: Vec<String>,
     /// Known context windows by model id, in tokens. A model absent here has
     /// no known window.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -1916,6 +1954,8 @@ impl Config {
                     },
                     base_url: p.base_url.clone(),
                     models: p.models.clone(),
+                    embeddings: p.embeddings.clone(),
+                    rerankers: p.rerankers.clone(),
                     contexts: p.contexts.clone(),
                     outputs: p.outputs.clone(),
                     free_models: p.free_models.clone(),
@@ -2262,7 +2302,7 @@ impl Config {
         if let Some((pid, rest)) = route.split_once('/')
             && self
                 .provider(pid)
-                .is_some_and(|p| p.models.iter().any(|m| m == rest))
+                .is_some_and(|p| p.serves(rest))
         {
             return (route.to_owned(), String::new());
         }
@@ -2326,7 +2366,7 @@ impl Config {
             return self.provider(pid).map(|p| (p, rest.to_owned()));
         }
         for p in &self.provider {
-            if p.models.iter().any(|m| m == model) {
+            if p.serves(model) {
                 return Some((p, model.to_owned()));
             }
         }
@@ -2334,6 +2374,46 @@ impl Config {
             return Some((p, model.to_owned()));
         }
         self.provider.first().map(|p| (p, model.to_owned()))
+    }
+
+    /// Resolve a retrieval model reference for `/v1/embeddings` or
+    /// `/v1/rerank`. Unlike a chat ask, a bare id only names a listed
+    /// model — embeddings or rerankers per `kind` — and never falls back
+    /// to the default provider: there is nothing to translate the call
+    /// into when no provider claims it (the reference's
+    /// `resolveRetrievalModel`). `group/<id>` tries the group's routes in
+    /// order; `provider/model` names the provider's model as written.
+    ///
+    /// `kind` is [`crate::serves::Serves::Embedding`] or
+    /// [`crate::serves::Serves::Rerank`]; any other variant never matches a
+    /// bare id.
+    pub fn resolve_retrieval(
+        &self,
+        model: &str,
+        kind: crate::serves::Serves,
+    ) -> Option<(&ProviderConfig, String)> {
+        if let Some(id) = model.strip_prefix("group/")
+            && let Some(group) = self.group(id)
+        {
+            return group
+                .routes
+                .iter()
+                .find_map(|route| self.resolve_provider(&self.member_effort(route).0));
+        }
+        if let Some((pid, rest)) = model.split_once('/') {
+            return self.provider(pid).map(|p| (p, rest.to_owned()));
+        }
+        for p in &self.provider {
+            let listed: &[String] = match kind {
+                crate::serves::Serves::Embedding => &p.embeddings,
+                crate::serves::Serves::Rerank => &p.rerankers,
+                _ => continue,
+            };
+            if listed.iter().any(|m| m == model) {
+                return Some((p, model.to_owned()));
+            }
+        }
+        None
     }
 
     /// The fallback references that follow the provider that first resolved
@@ -2453,6 +2533,8 @@ base_url = "http://127.0.0.1:1/v1"
             api_key: "key".into(),
             api_keys: Vec::new(),
             models: vec!["mock".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -2493,6 +2575,8 @@ base_url = "http://127.0.0.1:1/v1"
             api_key: "key".into(),
             api_keys: Vec::new(),
             models: vec!["mock".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -2541,6 +2625,8 @@ base_url = "http://127.0.0.1:1/v1"
             api_key: "legacy-key".into(),
             api_keys: Vec::new(),
             models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -2589,6 +2675,8 @@ base_url = "http://127.0.0.1:1/v1"
             api_key: String::new(),
             api_keys: Vec::new(),
             models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -2630,6 +2718,8 @@ base_url = "http://127.0.0.1:1/v1"
             api_key: String::new(),
             api_keys: Vec::new(),
             models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -2666,6 +2756,8 @@ base_url = "http://127.0.0.1:1/v1"
             api_key: "super-secret".into(),
             api_keys: Vec::new(),
             models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -2963,6 +3055,8 @@ base_url = "http://127.0.0.1:1/v1"
                 api_key: String::new(),
                 api_keys: vec![],
                 models: vec![],
+                embeddings: Vec::new(),
+                rerankers: Vec::new(),
                 contexts: Default::default(),
                 outputs: Default::default(),
                 free_models: Default::default(),
@@ -3009,6 +3103,8 @@ base_url = "http://127.0.0.1:1/v1"
             api_key: String::new(),
             api_keys: vec!["secret-one".into(), "secret-two".into()],
             models: vec!["mock-model".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -3199,6 +3295,8 @@ affinity = "session"
             api_key: "secret".into(),
             api_keys: Vec::new(),
             models: vec!["model".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -3316,6 +3414,8 @@ affinity = "session"
             api_key: String::new(),
             api_keys: Vec::new(),
             models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Vec::new(),
@@ -3352,6 +3452,8 @@ affinity = "session"
                     api_key: String::new(),
                     api_keys: Vec::new(),
                     models: vec!["m".into()],
+                    embeddings: Vec::new(),
+                    rerankers: Vec::new(),
                     contexts: Default::default(),
                     outputs: Default::default(),
                     free_models: Vec::new(),
@@ -3378,6 +3480,8 @@ affinity = "session"
                     api_key: String::new(),
                     api_keys: Vec::new(),
                     models: vec!["m".into()],
+                    embeddings: Vec::new(),
+                    rerankers: Vec::new(),
                     contexts: Default::default(),
                     outputs: Default::default(),
                     free_models: vec!["m".into()],
@@ -3438,6 +3542,8 @@ affinity = "session"
             api_key: String::new(),
             api_keys: Vec::new(),
             models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: vec!["flash-free".into()],
@@ -3673,6 +3779,8 @@ affinity = "session"
             api_key: "key".into(),
             api_keys: Vec::new(),
             models: models.iter().map(|model| model.to_string()).collect(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),
@@ -4053,6 +4161,8 @@ affinity = "session"
             api_key: String::new(),
             api_keys: Vec::new(),
             models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),

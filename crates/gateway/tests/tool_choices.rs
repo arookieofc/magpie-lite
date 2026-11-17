@@ -288,6 +288,8 @@ impl Fixture {
                 api_key: KEYS[0].into(),
                 api_keys: KEYS.iter().map(|s| (*s).into()).collect(),
                 models: vec!["up-model".into()],
+                embeddings: Vec::new(),
+                rerankers: Vec::new(),
                 contexts: Default::default(),
                 outputs: Default::default(),
                 free_models: Default::default(),

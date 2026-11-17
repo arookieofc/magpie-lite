@@ -92,6 +92,8 @@ fn provider(id: &str, url: String) -> ProviderConfig {
         api_key: "fixture-key".into(),
         api_keys: Vec::new(),
         models: vec!["mock-model".into()],
+        embeddings: Vec::new(),
+        rerankers: Vec::new(),
         contexts: BTreeMap::new(),
         outputs: Default::default(),
         free_models: Default::default(),

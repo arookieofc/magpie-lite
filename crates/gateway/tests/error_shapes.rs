@@ -78,6 +78,8 @@ async fn gateway(status: u16, body: Value) -> Gateway {
             api_key: "k".into(),
             api_keys: Vec::new(),
             models: vec!["m".into()],
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
             contexts: Default::default(),
             outputs: Default::default(),
             free_models: Default::default(),

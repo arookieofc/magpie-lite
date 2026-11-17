@@ -33,6 +33,13 @@ pub(crate) struct ProviderEdit {
     api_keys: Option<Vec<String>>,
     #[serde(default)]
     models: Vec<String>,
+    /// Omitted on update to preserve the existing embedding list; `[]`
+    /// clears it. Embedding models are served at `/v1/embeddings`, kept
+    /// out of agents' chat pickers.
+    embeddings: Option<Vec<String>>,
+    /// Omitted on update to preserve the existing rerank list; `[]`
+    /// clears it. Rerank models are served at `/v1/rerank`.
+    rerankers: Option<Vec<String>>,
     /// Omitted on update to preserve the existing windows; `{}` clears them.
     contexts: Option<BTreeMap<String, u64>>,
     /// Omitted on update to preserve the existing Max outputs; `{}` clears them.
@@ -110,6 +117,12 @@ impl ProviderEdit {
         let free_models = self
             .free_models
             .unwrap_or_else(|| existing.map(|p| p.free_models.clone()).unwrap_or_default());
+        let embeddings = self
+            .embeddings
+            .unwrap_or_else(|| existing.map(|p| p.embeddings.clone()).unwrap_or_default());
+        let rerankers = self
+            .rerankers
+            .unwrap_or_else(|| existing.map(|p| p.rerankers.clone()).unwrap_or_default());
         let affinity = self
             .affinity
             .unwrap_or_else(|| existing.map(|p| p.affinity).unwrap_or_default());
@@ -137,6 +150,8 @@ impl ProviderEdit {
             api_key,
             api_keys,
             models: self.models,
+            embeddings,
+            rerankers,
             contexts,
             outputs,
             free_models,

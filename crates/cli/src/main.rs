@@ -243,6 +243,14 @@ enum ProviderCommand {
         /// Known model ids, for bare-name routing and `models`.
         #[arg(long, num_args = 1..)]
         models: Vec<String>,
+        /// Embedding model ids served at `/v1/embeddings`, kept out of
+        /// chat pickers.
+        #[arg(long, num_args = 1..)]
+        embeddings: Vec<String>,
+        /// Rerank model ids served at `/v1/rerank`, kept out of chat
+        /// pickers.
+        #[arg(long, num_args = 1..)]
+        rerankers: Vec<String>,
         /// Known context window in tokens, as model=window; repeat for each
         /// model. A group member whose window cannot hold a request is not
         /// asked it.
@@ -420,6 +428,8 @@ async fn main() -> Result<()> {
                 api_keys,
                 name,
                 models,
+                embeddings,
+                rerankers,
                 contexts,
                 outputs,
                 free_models,
@@ -449,6 +459,8 @@ async fn main() -> Result<()> {
                     api_key: String::new(),
                     api_keys,
                     models,
+                    embeddings,
+                    rerankers,
                     contexts: contexts.into_iter().collect(),
                     outputs: outputs.into_iter().collect(),
                     free_models,
@@ -471,6 +483,7 @@ async fn main() -> Result<()> {
                     queue_wait_s,
                     pin_upstream,
                     key_generation: 0,
+                    icon: String::new(),
                 };
                 cfg.set_provider(provider, default)?;
                 save_config(&path, &cfg)?;

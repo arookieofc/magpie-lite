@@ -563,6 +563,8 @@ fn provider(id: &str, upstream: &str, model: &str) -> ProviderConfig {
         api_key: "k".into(),
         api_keys: Vec::new(),
         models: vec![model.into()],
+        embeddings: Vec::new(),
+        rerankers: Vec::new(),
         contexts: Default::default(),
         outputs: Default::default(),
         free_models: Default::default(),

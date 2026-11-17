@@ -148,6 +148,8 @@ async fn custom_tool_input_streams_before_the_upstream_call_finishes() {
                     api_key: KEY.into(),
                     api_keys: vec![],
                     models: vec!["up-model".into()],
+                    embeddings: Vec::new(),
+                    rerankers: Vec::new(),
                     contexts: Default::default(),
                     outputs: Default::default(),
                     free_models: Default::default(),
