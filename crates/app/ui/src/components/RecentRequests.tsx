@@ -4,22 +4,10 @@ import type { RequestRecord, Stats } from "../types";
 import { fmt, timeOf } from "../util";
 import type { StatsRange } from "../App";
 import { Badge, Card, Empty, Segmented } from "./ui";
+import { DatePicker } from "./DatePicker";
 import { useT, type TFunc } from "../i18n";
 
 type StatusFilter = "all" | "ok" | "errors";
-
-function toLocalInput(ms: number | null): string {
-  if (ms === null) return "";
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function fromLocalInput(v: string): number | null {
-  if (!v) return null;
-  const t = new Date(v).getTime();
-  return Number.isNaN(t) ? null : t;
-}
 
 function Details({ r }: { r: RequestRecord }) {
   const t = useT();
@@ -97,8 +85,8 @@ interface Props {
 
 export default function RecentRequests({ stats, statsRange, setStatsRange, onApplied }: Props) {
   const t = useT();
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState<Date | null>(null);
+  const [to, setTo] = useState<Date | null>(null);
   const [rangeError, setRangeError] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
@@ -121,16 +109,8 @@ export default function RecentRequests({ stats, statsRange, setStatsRange, onApp
 
   function apply(e: React.FormEvent) {
     e.preventDefault();
-    const f = fromLocalInput(from);
-    const tt = fromLocalInput(to);
-    if (from && f === null) {
-      setRangeError(t("req.badFrom"));
-      return;
-    }
-    if (to && tt === null) {
-      setRangeError(t("req.badTo"));
-      return;
-    }
+    const f = from ? from.getTime() : null;
+    const tt = to ? to.getTime() : null;
     if (f !== null && tt !== null && f > tt) {
       setRangeError(t("req.badOrder"));
       return;
@@ -141,8 +121,8 @@ export default function RecentRequests({ stats, statsRange, setStatsRange, onApp
   }
 
   function clear() {
-    setFrom("");
-    setTo("");
+    setFrom(null);
+    setTo(null);
     setRangeError("");
     setStatsRange(null);
     onApplied();
@@ -161,28 +141,24 @@ export default function RecentRequests({ stats, statsRange, setStatsRange, onApp
     <>
       <form className="toolbar" autoComplete="off" onSubmit={apply}>
         <div className="toolbar-range">
-          <label className="inline-field">
+          <label className="inline-field" htmlFor="stats-from">
             <span>{t("req.from")}</span>
-            <input
-              id="stats-from"
-              className="input"
-              type="datetime-local"
-              step={1}
-              value={from || toLocalInput(statsRange?.from ?? null)}
-              onChange={(e) => setFrom(e.target.value)}
-            />
           </label>
-          <label className="inline-field">
+          <DatePicker
+            id="stats-from"
+            value={from ?? (statsRange?.from != null ? new Date(statsRange.from) : null)}
+            onChange={setFrom}
+            withTime
+          />
+          <label className="inline-field" htmlFor="stats-to">
             <span>{t("req.to")}</span>
-            <input
-              id="stats-to"
-              className="input"
-              type="datetime-local"
-              step={1}
-              value={to || toLocalInput(statsRange?.to ?? null)}
-              onChange={(e) => setTo(e.target.value)}
-            />
           </label>
+          <DatePicker
+            id="stats-to"
+            value={to ?? (statsRange?.to != null ? new Date(statsRange.to) : null)}
+            onChange={setTo}
+            withTime
+          />
           <button className="btn" type="submit">
             {t("req.apply")}
           </button>
