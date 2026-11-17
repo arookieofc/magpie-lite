@@ -38,11 +38,14 @@ fn range(rng: &mut u64, lo: u64, hi: u64) -> u64 {
 }
 
 fn main() -> anyhow::Result<()> {
-    let path = std::env::args()
-        .nth(1)
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let append = args.iter().any(|a| a == "--append");
+    let path = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("magpie.demo.db"));
-    if path.exists() {
+    if !append && path.exists() {
         println!("wiping {}", path.display());
         std::fs::remove_file(&path)?;
     }
