@@ -159,7 +159,7 @@ export default function Routing({ trace }: Props) {
               {[...srcAgents.values()].map((r) => (
                 <div key={r.client_protocol} className="rt-node rt-src">
                   <b>{r.client_protocol || t("route.agentFallback")}</b>
-                  <small title={r.requested_model}>{r.requested_model}</small>
+                  <small data-tip={r.requested_model}>{r.requested_model}</small>
                 </div>
               ))}
             </div>
@@ -174,7 +174,7 @@ export default function Routing({ trace }: Props) {
               {tries.map((tt, i) => (
                 <li key={i} className={tt.status === "ok" ? "ok" : tt.status ? "bad" : "wait"}>
                   <span className="dot"></span>
-                  <b title={`${tt.provider}/${tt.model}`}>
+                  <b data-tip={`${tt.provider}/${tt.model}`}>
                     {tt.provider}/{tt.model}
                     {tt.key_slot ? t("route.keySlot", { n: tt.key_slot + 1 }) : ""}
                   </b>

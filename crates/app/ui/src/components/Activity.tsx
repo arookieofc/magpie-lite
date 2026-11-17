@@ -103,7 +103,7 @@ export default function Activity({ stats }: { stats: Stats | null }) {
                   <div
                     key={bar.at}
                     className="chart-col"
-                    title={t("activity.barTitle", { time: clock(bar.at, chart.step), total: fmt(total) }) + (bar.bad ? t("activity.barFailed", { bad: fmt(bar.bad) }) : "")}
+                    data-tip={t("activity.barTitle", { time: clock(bar.at, chart.step), total: fmt(total) }) + (bar.bad ? t("activity.barFailed", { bad: fmt(bar.bad) }) : "")}
                   >
                     <div className="chart-stack" style={{ height: `${(total / chart.peak) * 100}%` }}>
                       {bar.bad ? <span className="seg bad" style={{ flexGrow: bar.bad }} /> : null}

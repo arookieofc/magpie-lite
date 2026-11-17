@@ -19,6 +19,7 @@ import {
 import * as api from "../api";
 import type { Config, GroupConfig, ModelsResponse, ProviderConfig, RoutingRule, Stats } from "../types";
 import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Switch } from "./ui";
+import Select from "./Select";
 import { useT, type TFunc } from "../i18n";
 
 const RULE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -729,22 +730,22 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                       <span className="step">{index + 1}</span>
                       <label className="member-field">
                         <span>{t("groups.memberProvider")}</span>
-                        <select
-                          className="input mono"
+                        <Select
+                          mono
                           value={member.provider}
                           aria-label={t("groups.memberProvider")}
-                          onChange={(e) => patchMember(index, { provider: e.target.value })}
-                        >
-                          <option value=""></option>
-                          {providers.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name ? `${p.id} · ${p.name}` : p.id}
-                            </option>
-                          ))}
-                          {member.provider && !providers.some((p) => p.id === member.provider) ? (
-                            <option value={member.provider}>{member.provider}</option>
-                          ) : null}
-                        </select>
+                          onChange={(value) => patchMember(index, { provider: value })}
+                          options={[
+                            { value: "", label: "" },
+                            ...providers.map((p) => ({
+                              value: p.id,
+                              label: p.name ? `${p.id} · ${p.name}` : p.id,
+                            })),
+                            ...(member.provider && !providers.some((p) => p.id === member.provider)
+                              ? [{ value: member.provider, label: member.provider }]
+                              : []),
+                          ]}
+                        />
                       </label>
                       <label className="member-field grow">
                         <span>{t("groups.memberModel")}</span>
@@ -765,17 +766,15 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                       </label>
                       <label className="member-field small">
                         <span>{t("groups.memberLevel")}</span>
-                        <select
-                          className="input"
+                        <Select
                           value={member.level}
                           aria-label={t("groups.memberLevel")}
-                          onChange={(e) => patchMember(index, { level: e.target.value })}
-                        >
-                          <option value="">{t("groups.memberLevelAny")}</option>
-                          {LEVELS.map((level) => (
-                            <option key={level} value={level}>{level}</option>
-                          ))}
-                        </select>
+                          onChange={(value) => patchMember(index, { level: value })}
+                          options={[
+                            { value: "", label: t("groups.memberLevelAny") },
+                            ...LEVELS.map((level) => ({ value: level, label: level })),
+                          ]}
+                        />
                       </label>
                       {draft.routing === "weight" ? (
                         <label className="member-field tiny">
@@ -793,7 +792,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                           />
                         </label>
                       ) : null}
-                      <span className="member-id mono" title={serializeMember(member) || "provider/model"}>
+                      <span className="member-id mono" data-tip={serializeMember(member) || "provider/model"}>
                         {serializeMember(member) || <span className="text-muted">provider/model</span>}
                       </span>
                       <span className="member-actions">
@@ -801,7 +800,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                           type="button"
                           className="icon-btn"
                           disabled={index === 0}
-                          title={t("groups.memberUp")}
+                          data-tip={t("groups.memberUp")}
                           aria-label={t("groups.memberUp")}
                           onClick={() => moveMember(index, -1)}
                         >
@@ -811,7 +810,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                           type="button"
                           className="icon-btn"
                           disabled={index === draft.members.length - 1}
-                          title={t("groups.memberDown")}
+                          data-tip={t("groups.memberDown")}
                           aria-label={t("groups.memberDown")}
                           onClick={() => moveMember(index, 1)}
                         >
@@ -820,7 +819,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                         <button
                           type="button"
                           className="icon-btn danger"
-                          title={t("groups.memberRemove")}
+                          data-tip={t("groups.memberRemove")}
                           aria-label={t("groups.memberRemove")}
                           onClick={() => removeMember(index)}
                         >
@@ -843,37 +842,40 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
             <FormSection title={t("groups.secPolicy")}>
               <div className="form-grid">
                 <Field label={t("groups.fPolicy")} htmlFor="group-routing" help={policyHelp(draft.routing, t)}>
-                  <select id="group-routing" className="input"
-                    value={draft.routing} onChange={(e) => patchDraft({ routing: e.target.value })}>
-                    <option value="order">{t("groups.policyOrder")}</option>
-                    <option value="rotate">{t("groups.policyRotate")}</option>
-                    <option value="usage">{t("groups.policyUsage")}</option>
-                    <option value="free_first">{t("groups.policyFreeFirst")}</option>
-                    <option value="weight">{t("groups.policyWeight")}</option>
-                    <option value="manual">{t("groups.policyManual")}</option>
-                  </select>
+                  <Select id="group-routing"
+                    value={draft.routing} onChange={(value) => patchDraft({ routing: value })}
+                    options={[
+                      { value: "order", label: t("groups.policyOrder") },
+                      { value: "rotate", label: t("groups.policyRotate") },
+                      { value: "usage", label: t("groups.policyUsage") },
+                      { value: "free_first", label: t("groups.policyFreeFirst") },
+                      { value: "weight", label: t("groups.policyWeight") },
+                      { value: "manual", label: t("groups.policyManual") },
+                    ]}
+                  />
                 </Field>
                 <Field label={t("groups.fAffinity")} htmlFor="group-affinity"
                   help={t("groups.affinityHelp")}>
-                  <select id="group-affinity" className="input"
-                    value={draft.affinity} onChange={(e) => patchDraft({ affinity: e.target.value })}>
-                    <option value="auto">{t("prov.optAuto")}</option>
-                    <option value="session">{t("prov.optSession")}</option>
-                    <option value="turn">{t("prov.optTurn")}</option>
-                    <option value="off">{t("prov.optOff")}</option>
-                  </select>
+                  <Select id="group-affinity"
+                    value={draft.affinity} onChange={(value) => patchDraft({ affinity: value })}
+                    options={[
+                      { value: "auto", label: t("prov.optAuto") },
+                      { value: "session", label: t("prov.optSession") },
+                      { value: "turn", label: t("prov.optTurn") },
+                      { value: "off", label: t("prov.optOff") },
+                    ]}
+                  />
                 </Field>
                 <Field label={t("groups.fPick")} htmlFor="group-pick" hidden={draft.routing !== "manual"}
                   help={t("groups.fPickHelp")}>
-                  <select id="group-pick" className="input mono"
+                  <Select id="group-pick" mono
                     value={memberRoutes.includes(draft.pick.trim()) ? draft.pick.trim() : ""}
-                    onChange={(e) => patchDraft({ pick: e.target.value })}
-                  >
-                    <option value="">{t("groups.pickFirst")}</option>
-                    {memberRoutes.filter(Boolean).map((route) => (
-                      <option key={route} value={route}>{route}</option>
-                    ))}
-                  </select>
+                    onChange={(value) => patchDraft({ pick: value })}
+                    options={[
+                      { value: "", label: t("groups.pickFirst") },
+                      ...memberRoutes.filter(Boolean).map((route) => ({ value: route, label: route })),
+                    ]}
+                  />
                 </Field>
                 {draft.routing === "weight" ? (
                   <p className="help span-all">{t("groups.fWeightsHelp")}</p>
@@ -903,23 +905,22 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                 <Field label={t("groups.fClassifier")} htmlFor="group-classifier"
                   help={t("groups.fClassifierHelp")}>
                   <div className="classifier-pick">
-                    <select
-                      className="input mono"
+                    <Select
+                      mono
                       aria-label={t("groups.memberProvider")}
                       value={classifierParts.provider}
-                      onChange={(e) => {
-                        const next = e.target.value ? `${e.target.value}/${classifierParts.model}`.replace(/\/$/, "") : classifierParts.model;
-                        patchDraft({ classifier: e.target.value && classifierParts.model ? `${e.target.value}/${classifierParts.model}` : next });
+                      onChange={(value) => {
+                        const next = value ? `${value}/${classifierParts.model}`.replace(/\/$/, "") : classifierParts.model;
+                        patchDraft({ classifier: value && classifierParts.model ? `${value}/${classifierParts.model}` : next });
                       }}
-                    >
-                      <option value=""></option>
-                      {providers.map((p) => (
-                        <option key={p.id} value={p.id}>{p.id}</option>
-                      ))}
-                      {classifierParts.provider && !providers.some((p) => p.id === classifierParts.provider) ? (
-                        <option value={classifierParts.provider}>{classifierParts.provider}</option>
-                      ) : null}
-                    </select>
+                      options={[
+                        { value: "", label: "" },
+                        ...providers.map((p) => ({ value: p.id, label: p.id })),
+                        ...(classifierParts.provider && !providers.some((p) => p.id === classifierParts.provider)
+                          ? [{ value: classifierParts.provider, label: classifierParts.provider }]
+                          : []),
+                      ]}
+                    />
                     <input
                       id="group-classifier"
                       className="input mono"
@@ -947,11 +948,13 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                 </Field>
                 <Field label={t("groups.fEffort")} htmlFor="group-effort"
                   help={t("groups.fEffortHelp")}>
-                  <select id="group-effort" className="input"
-                    value={draft.effort} onChange={(e) => patchDraft({ effort: e.target.value })}>
-                    <option value="">{t("groups.effortChoice")}</option>
-                    <option value="auto">{t("groups.effortAuto")}</option>
-                  </select>
+                  <Select id="group-effort"
+                    value={draft.effort} onChange={(value) => patchDraft({ effort: value })}
+                    options={[
+                      { value: "", label: t("groups.effortChoice") },
+                      { value: "auto", label: t("groups.effortAuto") },
+                    ]}
+                  />
                 </Field>
                 <Field label={t("groups.fLevels")} htmlFor="group-levels"
                   help={t("groups.fLevelsHelp")}>
@@ -972,11 +975,11 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                       <span className="step">{index + 1}</span>
                       <span className="rule-text">{describeRule(item, index, t)}</span>
                       <button type="button" className="icon-btn" aria-label={t("groups.editRuleAria", { n: index + 1 })}
-                        title={t("groups.editRule")} onClick={() => openRule(index)}>
+                        data-tip={t("groups.editRule")} onClick={() => openRule(index)}>
                         <Pencil size={14} />
                       </button>
                       <button type="button" className="icon-btn danger" aria-label={t("groups.delRuleAria", { n: index + 1 })}
-                        title={t("groups.delRule")} onClick={() => deleteRule(index)}>
+                        data-tip={t("groups.delRule")} onClick={() => deleteRule(index)}>
                         <Trash2 size={14} />
                       </button>
                     </li>
@@ -993,13 +996,13 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                   </p>
                   <Field label={t("groups.fSendTo")} htmlFor="rule-use"
                     help={t("groups.fSendToHelp")}>
-                    <select id="rule-use" className="input mono" value={rule.use}
-                      onChange={(e) => patchRule({ use: e.target.value })}>
-                      <option value=""></option>
-                      {ruleUses.map((route) => (
-                        <option key={route} value={route}>{route}</option>
-                      ))}
-                    </select>
+                    <Select id="rule-use" mono value={rule.use}
+                      onChange={(value) => patchRule({ use: value })}
+                      options={[
+                        { value: "", label: "" },
+                        ...ruleUses.filter((route): route is string => Boolean(route)).map((route) => ({ value: route, label: route })),
+                      ]}
+                    />
                   </Field>
                   <p className="rule-form-sub">{t("groups.whenMatch")}</p>
                   <div className="form-grid four">
@@ -1008,14 +1011,17 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                         value={rule.tokens} onChange={(e) => patchRule({ tokens: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fReasoning")} htmlFor="rule-effort">
-                      <select id="rule-effort" className="input" value={rule.effort}
-                        onChange={(e) => patchRule({ effort: e.target.value })}>
-                        <option value="">{t("groups.effortAny")}</option>
-                        <option value="on">{t("groups.effortAnyReasoning")}</option>
-                        {RULE_EFFORTS.map((effort) => (
-                          <option key={effort} value={effort}>{t("groups.effortOrMore", { v: effort })}</option>
-                        ))}
-                      </select>
+                      <Select id="rule-effort" value={rule.effort}
+                        onChange={(value) => patchRule({ effort: value })}
+                        options={[
+                          { value: "", label: t("groups.effortAny") },
+                          { value: "on", label: t("groups.effortAnyReasoning") },
+                          ...RULE_EFFORTS.map((effort) => ({
+                            value: effort,
+                            label: t("groups.effortOrMore", { v: effort }),
+                          })),
+                        ]}
+                      />
                     </Field>
                     <Field label={t("groups.fAgents")} htmlFor="rule-agents">
                       <input id="rule-agents" className="input" placeholder="claude, codex" spellCheck={false}
@@ -1038,13 +1044,13 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                         value={rule.days} onChange={(e) => patchRule({ days: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fAskEffort")} htmlFor="rule-use-effort">
-                      <select id="rule-use-effort" className="input" value={rule.useEffort}
-                        onChange={(e) => patchRule({ useEffort: e.target.value })}>
-                        <option value="">{t("groups.effortUnchanged")}</option>
-                        {RULE_EFFORTS.map((effort) => (
-                          <option key={effort} value={effort}>{effort}</option>
-                        ))}
-                      </select>
+                      <Select id="rule-use-effort" value={rule.useEffort}
+                        onChange={(value) => patchRule({ useEffort: value })}
+                        options={[
+                          { value: "", label: t("groups.effortUnchanged") },
+                          ...RULE_EFFORTS.map((effort) => ({ value: effort, label: effort })),
+                        ]}
+                      />
                     </Field>
                   </div>
                   <div className="form-grid">
@@ -1256,7 +1262,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                                     type="button"
                                     className="member-pick"
                                     disabled={busy || isPicked}
-                                    title={isPicked ? t("groups.pickedTitle") : t("groups.pickTitle", { m: member })}
+                                    data-tip={isPicked ? t("groups.pickedTitle") : t("groups.pickTitle", { m: member })}
                                     aria-label={t("groups.pickMember", { m: member, id: group.id })}
                                     onClick={() => pickRoute(group, member)}
                                   >
@@ -1284,7 +1290,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                         </ul>
                       ) : null}
                       {failure ? (
-                        <p className="group-failure" title={t("groups.lastFail", { t: String(failure.at_unix_ms ?? "") })}>
+                        <p className="group-failure" data-tip={t("groups.lastFail", { t: String(failure.at_unix_ms ?? "") })}>
                           <CircleAlert size={12} aria-hidden="true" />
                           {t("groups.classifierFail", { model: group.classifier ?? "", error: (failure.error ?? "").slice(0, 100) })}
                         </p>
@@ -1294,11 +1300,11 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                     <div className="provider-side">
                       <div className="row-actions">
                         <button type="button" className="icon-btn" disabled={busy}
-                          aria-label={t("groups.editAria", { id: group.id })} title={t("common.edit")} onClick={() => openEditor(group)}>
+                          aria-label={t("groups.editAria", { id: group.id })} data-tip={t("common.edit")} onClick={() => openEditor(group)}>
                           <Pencil size={14} />
                         </button>
                         <button type="button" className="icon-btn danger" disabled={busy}
-                          aria-label={t("groups.delAria", { id: group.id })} title={group.auto ? t("groups.hideTitle") : t("common.delete")}
+                          aria-label={t("groups.delAria", { id: group.id })} data-tip={group.auto ? t("groups.hideTitle") : t("common.delete")}
                           onClick={() => deleteGroup(group)}>
                           {group.auto ? <EyeOff size={14} /> : <Trash2 size={14} />}
                         </button>

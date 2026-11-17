@@ -265,12 +265,12 @@ export default function Sidebar({
                   href={`#${item.id}`}
                   className="side-link"
                   aria-current={active ? "page" : undefined}
-                  title={collapsed ? label : undefined}
+                  data-tip={collapsed ? label : undefined}
                 >
                   <Icon size={16} strokeWidth={1.9} aria-hidden="true" />
                   <span className="side-label">{label}</span>
                   {item.badge ? <span className="side-badge">{item.badge}</span> : null}
-                  {item.alert ? <span className="side-dot" title="Needs attention" /> : null}
+                  {item.alert ? <span className="side-dot" data-tip="Needs attention" /> : null}
                 </a>
               );
             })}
@@ -284,7 +284,7 @@ export default function Sidebar({
           className={`side-gw${healthy === false ? " off" : ""}`}
           href="#gateway"
           role="status"
-          title={sync}
+          data-tip={sync}
         >
           <i aria-hidden="true" />
           <span>{t("nav.gateway")} 127.0.0.1:{gatewayPort ?? 3426}</span>
@@ -299,7 +299,7 @@ export default function Sidebar({
           onClick={onToggleCollapse}
           aria-label={collapsed ? t("side.expand") : t("side.collapse")}
           aria-expanded={!collapsed}
-          title={collapsed ? t("side.expand") : t("side.collapse")}
+          data-tip={collapsed ? t("side.expand") : t("side.collapse")}
         >
           <CollapseIcon size={15} />
         </button>

@@ -18,6 +18,7 @@ import { useT, type TFunc } from "../i18n";
 import AddProvider, { type PastedEndpoint } from "./AddProvider";
 import CustomProvider from "./CustomProvider";
 import QuickAdd from "./QuickAdd";
+import Select from "./Select";
 import { curlFill, originOfUrl, splitKeys, withOriginUrl } from "../util";
 import { servesOf } from "../serves";
 
@@ -710,13 +711,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
 
   const showKeys = draft.keyMode === "replace";
 
-  const triOptions = (
-    <>
-      <option value="">{t("common.unknown")}</option>
-      <option value="true">{t("common.yes")}</option>
-      <option value="false">{t("common.no")}</option>
-    </>
-  );
+  const triOptions = [
+    { value: "", label: t("common.unknown") },
+    { value: "true", label: t("common.yes") },
+    { value: "false", label: t("common.no") },
+  ];
 
   const switchCustomProtocol = (v: string) => {
     setCustomUrls((m) => ({ ...m, [draft.protocol]: draft.baseUrl }));
@@ -754,23 +753,27 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       <FormSection title={t("prov.secKeyRouting")} description={t("prov.secKeyRoutingDesc")}>
         <div className="form-grid">
           <Field label={t("prov.fKeyRouting")} htmlFor="cst-routing">
-            <select id="cst-routing" className="input"
-              value={draft.routing} onChange={(e) => set({ routing: e.target.value })}>
-              <option value="rotate">{t("prov.optRotate")}</option>
-              <option value="order">{t("prov.optOrder")}</option>
-              <option value="usage">{t("prov.optUsage")}</option>
-              <option value="free_first">{t("prov.optFreeFirst")}</option>
-              <option value="weight">{t("prov.optWeight")}</option>
-            </select>
+            <Select id="cst-routing"
+              value={draft.routing} onChange={(value) => set({ routing: value })}
+              options={[
+                { value: "rotate", label: t("prov.optRotate") },
+                { value: "order", label: t("prov.optOrder") },
+                { value: "usage", label: t("prov.optUsage") },
+                { value: "free_first", label: t("prov.optFreeFirst") },
+                { value: "weight", label: t("prov.optWeight") },
+              ]}
+            />
           </Field>
           <Field label={t("prov.fAffinity")} htmlFor="cst-affinity">
-            <select id="cst-affinity" className="input"
-              value={draft.affinity} onChange={(e) => set({ affinity: e.target.value })}>
-              <option value="auto">{t("prov.optAuto")}</option>
-              <option value="session">{t("prov.optSession")}</option>
-              <option value="turn">{t("prov.optTurn")}</option>
-              <option value="off">{t("prov.optOff")}</option>
-            </select>
+            <Select id="cst-affinity"
+              value={draft.affinity} onChange={(value) => set({ affinity: value })}
+              options={[
+                { value: "auto", label: t("prov.optAuto") },
+                { value: "session", label: t("prov.optSession") },
+                { value: "turn", label: t("prov.optTurn") },
+                { value: "off", label: t("prov.optOff") },
+              ]}
+            />
           </Field>
         </div>
         <Switch checked={draft.pinUpstream} onChange={(v) => set({ pinUpstream: v })}>
@@ -811,22 +814,22 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         </fieldset>
         <div className="form-grid three">
           <Field label={t("prov.capStreaming")} htmlFor="cst-streaming">
-            <select id="cst-streaming" className="input"
-              value={draft.capStreaming} onChange={(e) => set({ capStreaming: e.target.value })}>
-              {triOptions}
-            </select>
+            <Select id="cst-streaming"
+              value={draft.capStreaming} onChange={(value) => set({ capStreaming: value })}
+              options={triOptions}
+            />
           </Field>
           <Field label={t("prov.capTools")} htmlFor="cst-tools">
-            <select id="cst-tools" className="input"
-              value={draft.capTools} onChange={(e) => set({ capTools: e.target.value })}>
-              {triOptions}
-            </select>
+            <Select id="cst-tools"
+              value={draft.capTools} onChange={(value) => set({ capTools: value })}
+              options={triOptions}
+            />
           </Field>
           <Field label={t("prov.capVision")} htmlFor="cst-vision">
-            <select id="cst-vision" className="input"
-              value={draft.capVision} onChange={(e) => set({ capVision: e.target.value })}>
-              {triOptions}
-            </select>
+            <Select id="cst-vision"
+              value={draft.capVision} onChange={(value) => set({ capVision: value })}
+              options={triOptions}
+            />
           </Field>
         </div>
       </FormSection>
@@ -1110,13 +1113,15 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                 value={draft.name} onChange={(e) => set({ name: e.target.value })} />
             </Field>
             <Field label={t("prov.fProtocol")} htmlFor="provider-protocol">
-              <select id="provider-protocol" className="input"
-                value={draft.protocol} onChange={(e) => set({ protocol: e.target.value })}>
-                <option value="chat">{t("prov.protoChat")}</option>
-                <option value="responses">{t("prov.protoResponses")}</option>
-                <option value="anthropic">{t("prov.protoAnthropic")}</option>
-                <option value="gemini">{t("prov.protoGemini")}</option>
-              </select>
+              <Select id="provider-protocol"
+                value={draft.protocol} onChange={(value) => set({ protocol: value })}
+                options={[
+                  { value: "chat", label: t("prov.protoChat") },
+                  { value: "responses", label: t("prov.protoResponses") },
+                  { value: "anthropic", label: t("prov.protoAnthropic") },
+                  { value: "gemini", label: t("prov.protoGemini") },
+                ]}
+              />
             </Field>
             <Field label={isAzure ? t("prov.fEndpoint") : t("prov.fUrl")} htmlFor="provider-url"
               help={isAzure ? t("prov.azureEndpointHelp") : t("prov.fUrlHelp")}>
@@ -1137,22 +1142,22 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           </fieldset>
           <div className="form-grid three">
             <Field label={t("prov.capStreaming")} htmlFor="provider-cap-streaming">
-              <select id="provider-cap-streaming" className="input"
-                value={draft.capStreaming} onChange={(e) => set({ capStreaming: e.target.value })}>
-                {triOptions}
-              </select>
+              <Select id="provider-cap-streaming"
+                value={draft.capStreaming} onChange={(value) => set({ capStreaming: value })}
+                options={triOptions}
+              />
             </Field>
             <Field label={t("prov.capTools")} htmlFor="provider-cap-tools">
-              <select id="provider-cap-tools" className="input"
-                value={draft.capTools} onChange={(e) => set({ capTools: e.target.value })}>
-                {triOptions}
-              </select>
+              <Select id="provider-cap-tools"
+                value={draft.capTools} onChange={(value) => set({ capTools: value })}
+                options={triOptions}
+              />
             </Field>
             <Field label={t("prov.capVision")} htmlFor="provider-cap-vision">
-              <select id="provider-cap-vision" className="input"
-                value={draft.capVision} onChange={(e) => set({ capVision: e.target.value })}>
-                {triOptions}
-              </select>
+              <Select id="provider-cap-vision"
+                value={draft.capVision} onChange={(value) => set({ capVision: value })}
+                options={triOptions}
+              />
             </Field>
           </div>
           <Switch checked={draft.makeDefault} onChange={(v) => set({ makeDefault: v })}>
@@ -1231,7 +1236,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                   {showPoolKeys ? t("prov.hide") : t("prov.show")}
                 </button>
                 {poolKeyCount > 1 ? (
-                  <span className="help" role="status" title={t("prov.keysCountTitle", { n: poolKeyCount })}>
+                  <span className="help" role="status" data-tip={t("prov.keysCountTitle", { n: poolKeyCount })}>
                     {t("prov.nKeys", { n: poolKeyCount })}
                   </span>
                 ) : null}
@@ -1254,23 +1259,27 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         <FormSection title={t("prov.secKeyRouting")} description={t("prov.secKeyRoutingDesc")}>
           <div className="form-grid">
             <Field label={t("prov.fKeyRouting")} htmlFor="provider-routing">
-              <select id="provider-routing" className="input"
-                value={draft.routing} onChange={(e) => set({ routing: e.target.value })}>
-                <option value="rotate">{t("prov.optRotate")}</option>
-                <option value="order">{t("prov.optOrder")}</option>
-                <option value="usage">{t("prov.optUsage")}</option>
-                <option value="free_first">{t("prov.optFreeFirst")}</option>
-                <option value="weight">{t("prov.optWeight")}</option>
-              </select>
+              <Select id="provider-routing"
+                value={draft.routing} onChange={(value) => set({ routing: value })}
+                options={[
+                  { value: "rotate", label: t("prov.optRotate") },
+                  { value: "order", label: t("prov.optOrder") },
+                  { value: "usage", label: t("prov.optUsage") },
+                  { value: "free_first", label: t("prov.optFreeFirst") },
+                  { value: "weight", label: t("prov.optWeight") },
+                ]}
+              />
             </Field>
             <Field label={t("prov.fAffinity")} htmlFor="provider-affinity">
-              <select id="provider-affinity" className="input"
-                value={draft.affinity} onChange={(e) => set({ affinity: e.target.value })}>
-                <option value="auto">{t("prov.optAuto")}</option>
-                <option value="session">{t("prov.optSession")}</option>
-                <option value="turn">{t("prov.optTurn")}</option>
-                <option value="off">{t("prov.optOff")}</option>
-              </select>
+              <Select id="provider-affinity"
+                value={draft.affinity} onChange={(value) => set({ affinity: value })}
+                options={[
+                  { value: "auto", label: t("prov.optAuto") },
+                  { value: "session", label: t("prov.optSession") },
+                  { value: "turn", label: t("prov.optTurn") },
+                  { value: "off", label: t("prov.optOff") },
+                ]}
+              />
             </Field>
             {draft.routing === "weight" ? (
               <Field label={t("prov.fWeights")} htmlFor="provider-weights"
@@ -1484,7 +1493,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                             </span>
                           ) : null}
                         </span>
-                        <span className={`pv-key ${key.tone}`} title={key.title}>
+                        <span className={`pv-key ${key.tone}`} data-tip={key.title}>
                           <span>{key.text}</span>
                         </span>
                         <span className="pv-chev" aria-hidden="true">
@@ -1493,11 +1502,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
                       </button>
                       <span className="pv-ops">
                         <button type="button" className="icon-btn" disabled={busy}
-                          aria-label={t("prov.editAria", { id: p.id })} title={t("prov.editTitle_attr")} onClick={() => openEdit(p)}>
+                          aria-label={t("prov.editAria", { id: p.id })} data-tip={t("prov.editTitle_attr")} onClick={() => openEdit(p)}>
                           <Pencil size={14} />
                         </button>
                         <button type="button" className="icon-btn danger" disabled={busy}
-                          aria-label={t("prov.delAria", { id: p.id })} title={t("prov.delTitle_attr")} onClick={() => remove(p)}>
+                          aria-label={t("prov.delAria", { id: p.id })} data-tip={t("prov.delTitle_attr")} onClick={() => remove(p)}>
                           <Trash2 size={14} />
                         </button>
                       </span>

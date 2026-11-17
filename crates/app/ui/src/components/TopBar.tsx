@@ -72,7 +72,7 @@ export default function TopBar({
       </div>
       <div className="topbar-actions">
         <StatusPill state={state} sync={sync} />
-        <label className="switch small" title={t("topbar.auto")}>
+        <label className="switch small" data-tip={t("topbar.auto")}>
           <input
             type="checkbox"
             role="switch"
@@ -85,7 +85,7 @@ export default function TopBar({
           type="button"
           className={`icon-btn${refreshing ? " spinning" : ""}`}
           aria-label={t("topbar.refresh")}
-          title={t("topbar.refresh")}
+          data-tip={t("topbar.refresh")}
           disabled={busy}
           onClick={onRefresh}
         >
@@ -99,7 +99,7 @@ export default function TopBar({
               role="radio"
               aria-checked={locale === lang.id}
               aria-label={lang.id === "en" ? "English" : "中文"}
-              title={lang.id === "en" ? "English" : "中文"}
+              data-tip={lang.id === "en" ? "English" : "中文"}
               onClick={() => setLocale(lang.id)}
             >
               {lang.label}
@@ -116,7 +116,7 @@ export default function TopBar({
                 role="radio"
                 aria-checked={theme === option.id}
                 aria-label={t(THEME_LABEL_KEYS[option.id])}
-                title={t(THEME_LABEL_KEYS[option.id])}
+                data-tip={t(THEME_LABEL_KEYS[option.id])}
                 onClick={() => setTheme(option.id)}
               >
                 <Icon size={14} />

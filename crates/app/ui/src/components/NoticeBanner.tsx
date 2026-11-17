@@ -42,7 +42,7 @@ export default function NoticeBanner({
           type="button"
           className="icon-btn"
           aria-label={t("banner.dismiss")}
-          title={t("banner.dismiss")}
+          data-tip={t("banner.dismiss")}
           onClick={onDismiss}
         >
           <X size={15} />

@@ -159,7 +159,7 @@ export default function QuickAdd({ preset, pair, busy, onPickRegion, onClose, on
                 {endpoints.map((ep) => (
                   <li key={`${ep.label}:${ep.url}`}>
                     <span className="quick-proto">{ep.label}</span>
-                    <span className="mono quick-url" title={ep.url}>{ep.url}</span>
+                    <span className="mono quick-url" data-tip={ep.url}>{ep.url}</span>
                   </li>
                 ))}
               </ul>

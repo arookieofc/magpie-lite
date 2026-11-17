@@ -20,7 +20,7 @@ export default function StatusPill({
         ? t("topbar.offline")
         : t("topbar.checking");
   return (
-    <div className={`status-pill ${state}`} role="status" aria-live="polite" title={sync}>
+    <div className={`status-pill ${state}`} role="status" aria-live="polite" data-tip={sync}>
       <span className="status-dot" aria-hidden="true" />
       <span className="status-label">{label}</span>
       <span className="status-sync">{sync}</span>

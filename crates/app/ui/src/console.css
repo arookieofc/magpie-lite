@@ -722,6 +722,74 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
 .input.secret { -webkit-text-security: disc; }
 .input-group { display: flex; gap: 8px; }
 
+/* Select: the one dropdown every picker shares. The button keeps the
+   .input chrome; its menu grows out of it the way the reference's
+   picker popover does. */
+.sel-peer { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+button.sel {
+  display: inline-flex; align-items: center; gap: 8px;
+  text-align: left; cursor: pointer; appearance: none;
+  background-image: none; padding-right: 30px; position: relative;
+}
+button.sel .sel-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.sel .sel-value.ph { color: var(--subtle); }
+button.sel .sel-chev {
+  position: absolute; right: 10px; color: var(--muted); flex: none;
+  transition: transform var(--fast) var(--ease), color var(--fast);
+}
+button.sel.open .sel-chev, button.sel:hover .sel-chev { color: var(--text-2); }
+button.sel.open .sel-chev { transform: rotate(180deg); }
+button.sel:disabled { cursor: not-allowed; }
+.sel-pop {
+  position: fixed; z-index: 60;
+  min-width: 160px; max-width: min(420px, calc(100vw - 24px));
+  max-height: min(320px, calc(100vh - 24px)); overflow-y: auto;
+  padding: 5px; border-radius: 10px;
+  background: var(--surface-2, var(--surface));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  transform-origin: top center;
+  animation: sel-fade .13s ease-out, sel-in .22s var(--ease);
+}
+.sel-pop.up { transform-origin: bottom center; }
+@keyframes sel-fade { from { opacity: 0; } }
+@keyframes sel-in { from { transform: translateY(-5px) scale(.96); } }
+.sel-pop.up { animation-name: sel-fade, sel-in-up; }
+@keyframes sel-in-up { from { transform: translateY(5px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) {
+  .sel-pop { animation: sel-fade .12s ease-out; }
+}
+.sel-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text); font: inherit; font-size: 13px;
+  text-align: left; cursor: pointer;
+}
+.sel-opt .sel-opt-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sel-opt.hot:not(:disabled) { background: var(--hover); }
+.sel-opt.on { color: var(--accent); }
+.sel-opt-check { flex: none; color: var(--accent); }
+.sel-opt:disabled { opacity: .5; cursor: not-allowed; }
+.sel-empty { display: block; padding: 7px 9px; color: var(--subtle); font-size: 12.5px; }
+
+/* Shared tooltip, the reference's rail-tip behavior: first hover waits
+   a moment, hopping between tipped elements moves it at once. */
+.tip {
+  position: fixed; z-index: 90; max-width: min(320px, calc(100vw - 24px));
+  padding: 6px 9px; border-radius: 8px;
+  background: var(--surface-3, var(--surface));
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  font-size: 12px; line-height: 1.4; color: var(--text-2);
+  overflow-wrap: anywhere; pointer-events: none;
+  opacity: 0; transform: translateY(-2px) scale(.97);
+  transition: opacity .15s ease, transform .15s var(--ease);
+}
+.tip.on { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .tip { transition: opacity .15s ease; transform: none; }
+}
+
 .switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; font-size: 13px; color: var(--text-2); }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch-track {

@@ -9,10 +9,12 @@ import { useT } from "../i18n";
 export default function AppShell({
   sideNav,
   topBar,
+  overlay,
   children,
 }: {
   sideNav: ReactNode;
   topBar: ReactNode;
+  overlay?: ReactNode;
   children: ReactNode;
 }) {
   const t = useT();
@@ -28,6 +30,7 @@ export default function AppShell({
           {children}
         </main>
       </div>
+      {overlay}
     </div>
   );
 }

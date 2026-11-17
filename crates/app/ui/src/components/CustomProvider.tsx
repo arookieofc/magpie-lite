@@ -278,7 +278,7 @@ export default function CustomProvider({
               type="button"
               className="cst-seg"
               disabled
-              title={t("prov.protoSystemSoon")}
+              data-tip={t("prov.protoSystemSoon")}
             >
               {t("prov.protoPillSystem")}
             </button>
@@ -335,7 +335,7 @@ export default function CustomProvider({
             {showKey ? t("prov.hide") : t("prov.show")}
           </button>
           {keyCount > 1 ? (
-            <span className="help" role="status" title={t("prov.keysCountTitle", { n: keyCount })}>
+            <span className="help" role="status" data-tip={t("prov.keysCountTitle", { n: keyCount })}>
               {t("prov.nKeys", { n: keyCount })}
             </span>
           ) : null}
@@ -485,7 +485,7 @@ export default function CustomProvider({
                   type="button"
                   role="option"
                   aria-selected={draft.icon === n}
-                  title={n.replace(/-color$/, "")}
+                  data-tip={n.replace(/-color$/, "")}
                   className={`cst-iconopt${draft.icon === n ? " on" : ""}`}
                   onClick={() => {
                     set({ icon: n });
@@ -545,7 +545,7 @@ export default function CustomProvider({
                         aria-selected={lists[bucket].set.has(id)}
                         className={`mchip pick${lists[bucket].set.has(id) ? " on" : ""}`}
                         onClick={() => toggleModel(id)}
-                        title={id}
+                        data-tip={id}
                       >
                         {id}
                       </button>

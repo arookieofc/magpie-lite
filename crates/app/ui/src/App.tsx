@@ -12,6 +12,7 @@ import AppShell from "./components/AppShell";
 import Sidebar, { type NavItem, type ThemeChoice, type View } from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import NoticeBanner from "./components/NoticeBanner";
+import Tooltip from "./components/Tooltip";
 import { useT } from "./i18n";
 import StatsGauge from "./components/StatsGauge";
 import Activity from "./components/Activity";
@@ -273,6 +274,7 @@ export default function App() {
 
   return (
     <AppShell
+      overlay={<Tooltip />}
       sideNav={
         <Sidebar
           items={nav}

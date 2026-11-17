@@ -67,7 +67,7 @@ export default function ProviderTotals({ stats }: { stats: Stats | null }) {
                       <span
                         key={slot}
                         className={`key-slot${v.errors ? " has-errors" : ""}`}
-                        title={t("health.keySlotTitle", { slot, ok: fmt(v.successes), total: fmt(v.attempts), errors: fmt(v.errors) })}
+                        data-tip={t("health.keySlotTitle", { slot, ok: fmt(v.successes), total: fmt(v.attempts), errors: fmt(v.errors) })}
                       >
                         {t("health.keySlot", { slot, ok: fmt(v.successes), total: fmt(v.attempts) })}
                       </span>

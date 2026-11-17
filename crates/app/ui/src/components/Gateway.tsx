@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Check, Copy, Server, TerminalSquare } from "lucide-react";
 import type { Config, ModelsResponse } from "../types";
 import { Badge, Card, Empty, Segmented } from "./ui";
+import Select from "./Select";
 import { useT, type DictKey } from "../i18n";
 
 type ApiKind = "openai" | "responses" | "anthropic" | "gemini" | "ollama" | "embeddings" | "rerank";
@@ -234,7 +235,7 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
     <button
       type="button"
       className="icon-btn tiny"
-      title={ok ? t("gw.copied") : label}
+      data-tip={ok ? t("gw.copied") : label}
       aria-label={ok ? t("gw.copied") : label}
       onClick={async () => {
         try {
@@ -394,20 +395,18 @@ export default function Gateway({
           <div className="gw-field">
             <span className="gw-label">{t("gw.modelLabel")}</span>
             <div className="gw-value">
-              <select
-                className="input"
+              <Select
+                mono
                 value={picked}
-                onChange={(e) => setModel(e.target.value)}
+                onChange={setModel}
                 aria-label={t("gw.modelLabel")}
                 key={api}
-              >
-                {apiModels.length === 0 ? <option value={picked}>{picked}</option> : null}
-                {apiModels.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
+                options={
+                  apiModels.length === 0
+                    ? [{ value: picked, label: picked }]
+                    : apiModels.map((id) => ({ value: id, label: id }))
+                }
+              />
             </div>
             <p className="gw-hint">
               {api === "embeddings" || api === "rerank"

@@ -278,7 +278,7 @@ export default function AddProvider({
                       key={g.key}
                       type="button"
                       className={`tile${added ? " added" : ""}`}
-                      title={tileTitle(g)}
+                      data-tip={tileTitle(g)}
                       onClick={() => openTile(g)}
                     >
                       <VendorIcon

@@ -76,7 +76,7 @@ export function Badge({
   title?: string;
 }) {
   return (
-    <span className={`badge ${tone}`} title={title}>
+    <span className={`badge ${tone}`} data-tip={title}>
       {dot ? <span className="badge-dot" aria-hidden="true" /> : null}
       {children}
     </span>
@@ -205,7 +205,7 @@ export function Segmented<T extends string>({
           role="radio"
           aria-checked={option.value === value}
           disabled={disabled || option.disabled}
-          title={option.title}
+          data-tip={option.title}
           onClick={() => onChange(option.value)}
         >
           {option.label}
