@@ -1470,6 +1470,8 @@ pub struct ConfigSnapshot {
     /// Durable opaque revision used for optimistic management updates.
     /// It is opaque to clients and never contains configuration or secret data.
     pub revision: u64,
+    /// Loopback port the gateway listens on.
+    pub port: u16,
     /// Provider used when a model names none.
     pub default_provider: String,
     /// Gateway-wide cooldown default, in milliseconds.
@@ -1887,6 +1889,7 @@ impl Config {
     pub fn snapshot_with_revision(&self, revision: u64) -> ConfigSnapshot {
         ConfigSnapshot {
             revision,
+            port: self.port,
             default_provider: self.default_provider.clone(),
             key_cooldown_ms: self.key_cooldown_ms,
             stream_first_content_timeout_ms: self.stream_first_content_timeout_ms,

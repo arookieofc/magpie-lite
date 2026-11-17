@@ -1020,6 +1020,53 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
 
 .dp-foot { display: flex; align-items: center; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
 .dp-foot .spacer { flex: 1; }
+
+/* ── Gateway ────────────────────────────────────────────────────────── */
+.gw { display: grid; gap: 14px; }
+.gw-hero .card-body { padding: 0; }
+.gw-hero-row { display: flex; align-items: center; gap: 14px; padding: 16px 18px; }
+.gw-hero-mark {
+  width: 44px; height: 44px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.gw-hero-name { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 650; }
+.gw-hero-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+.gw-lan { border-top: 1px solid var(--border); padding: 14px 18px 16px; }
+.gw-lan-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.gw-addr { display: flex; align-items: center; gap: 10px; }
+.gw-addr-who { font-size: 12.5px; color: var(--muted); min-width: 34px; }
+.gw-addr-url {
+  font-family: var(--mono); font-size: 12.5px;
+  padding: 4px 10px; border-radius: 6px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text);
+}
+.gw-lan-note { margin: 10px 0 0; font-size: 12px; line-height: 1.55; color: var(--muted); }
+
+.gw-access { display: grid; gap: 12px; }
+.gw-api-row { display: flex; align-items: center; gap: 12px; }
+.gw-label { font-size: 12.5px; font-weight: 600; color: var(--text-2); min-width: 56px; }
+.gw-blurb { margin: 0; font-size: 12.5px; color: var(--muted); }
+.gw-field { display: grid; gap: 6px; }
+.gw-value { display: flex; align-items: center; gap: 6px; }
+.gw-value code {
+  font-family: var(--mono); font-size: 12.5px;
+  padding: 5px 10px; border-radius: 6px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.gw-value .input { max-width: 340px; height: 30px; font-size: 12.5px; }
+.gw-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.gw-code {
+  position: relative;
+  margin: 0; padding: 10px 36px 10px 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  color: var(--text); overflow-x: auto; white-space: pre;
+}
+.gw-code .icon-btn { position: absolute; top: 6px; right: 6px; }
 .toolbar-hint { font-size: 12px; color: var(--muted); }
 .toolbar-hint.error { color: var(--bad); }
 .log-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

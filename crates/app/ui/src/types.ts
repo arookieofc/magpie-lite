@@ -208,6 +208,7 @@ export interface GroupConfig {
 
 export interface Config {
   revision: number;
+  port: number;
   default_provider: string;
   key_cooldown_ms: number;
   providers: ProviderConfig[];

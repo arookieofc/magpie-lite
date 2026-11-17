@@ -15,6 +15,7 @@ import NoticeBanner from "./components/NoticeBanner";
 import { useT } from "./i18n";
 import StatsGauge from "./components/StatsGauge";
 import Activity from "./components/Activity";
+import Gateway from "./components/Gateway";
 import ProviderTotals from "./components/ProviderTotals";
 import Routing from "./components/Routing";
 import RecentRequests from "./components/RecentRequests";
@@ -24,7 +25,7 @@ import Models from "./components/Models";
 import UsageByModel from "./components/UsageByModel";
 import { PageHeader } from "./components/ui";
 
-const VIEWS: View[] = ["overview", "providers", "groups", "requests"];
+const VIEWS: View[] = ["overview", "gateway", "providers", "groups", "requests"];
 const THEME_KEY = "magpie-theme";
 const COLLAPSE_KEY = "magpie-sidenav-collapsed";
 
@@ -85,6 +86,7 @@ export default function App() {
   const meta = {
     overview: { title: t("view.overviewTitle"), subtitle: t("view.overviewSub") },
     requests: { title: t("view.requestsTitle"), subtitle: t("view.requestsSub") },
+    gateway: { title: t("view.gatewayTitle"), subtitle: t("view.gatewaySub") },
     providers: { title: t("view.providersTitle"), subtitle: t("view.providersSub") },
     groups: { title: t("view.groupsTitle"), subtitle: t("view.groupsSub") },
   }[view];
@@ -257,6 +259,7 @@ export default function App() {
         badge: recent.length ? String(recent.length) : undefined,
         alert: recentErrors > 0,
       },
+      { id: "gateway", labelKey: "nav.gateway" },
       {
         id: "providers",
         labelKey: "nav.providers",
@@ -361,6 +364,10 @@ export default function App() {
           <section className="view" hidden={view !== "providers"} aria-label={t("page.providersTitle")}>
             <ProviderConfig config={data.config} busy={busy} setBusy={setBusy} onChanged={refreshAll} />
             <Models models={data.models} />
+          </section>
+
+          <section className="view" hidden={view !== "gateway"} aria-label={t("page.gatewayTitle")}>
+            <Gateway config={data.config} models={data.models} healthy={healthy} />
           </section>
 
           <section className="view" hidden={view !== "groups"} aria-label={t("page.groupsTitle")}>
