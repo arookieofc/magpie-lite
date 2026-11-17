@@ -4,7 +4,7 @@ import type { Config, ModelsResponse } from "../types";
 import { Badge, Card, Empty, Segmented } from "./ui";
 import { useT, type DictKey } from "../i18n";
 
-type ApiKind = "openai" | "responses" | "anthropic" | "gemini" | "ollama";
+type ApiKind = "openai" | "responses" | "anthropic" | "gemini" | "ollama" | "embeddings" | "rerank";
 type Snippet = "powershell" | "curl" | "python" | "node";
 
 interface ApiSpec {
@@ -51,6 +51,20 @@ const APIS: Record<ApiKind, ApiSpec> = {
     envBase: "OLLAMA_HOST",
     envKey: "",
   },
+  embeddings: {
+    label: "Embeddings",
+    path: "/v1",
+    blurb: "gw.apiEmbeddings",
+    envBase: "OPENAI_BASE_URL",
+    envKey: "OPENAI_API_KEY",
+  },
+  rerank: {
+    label: "Rerank",
+    path: "/v1",
+    blurb: "gw.apiRerank",
+    envBase: "",
+    envKey: "OPENAI_API_KEY",
+  },
 };
 
 function snippet(
@@ -77,6 +91,11 @@ gemini`;
         return `$env:OLLAMA_HOST = "${url}"
 ollama run ${model}`;
       }
+      if (api === "embeddings" || api === "rerank") {
+        return `$env:OPENAI_BASE_URL = "${url}"
+$env:OPENAI_API_KEY = "${token}"
+# ${api === "embeddings" ? "POST /v1/embeddings" : "POST /v1/rerank"} — see curl/Python/Node tabs`;
+      }
       return `$env:OPENAI_BASE_URL = "${url}"
 $env:OPENAI_API_KEY = "${token}"`;
     case "curl":
@@ -101,6 +120,18 @@ $env:OPENAI_API_KEY = "${token}"`;
   -H "Authorization: Bearer ${token}" \\
   -H "content-type: application/json" \\
   -d '{"model":"${model}","input":"hi"}'`;
+      }
+      if (api === "embeddings") {
+        return `curl ${url}/embeddings \\
+  -H "Authorization: Bearer ${token}" \\
+  -H "content-type: application/json" \\
+  -d '{"model":"${model}","input":"hi"}'`;
+      }
+      if (api === "rerank") {
+        return `curl ${url}/rerank \\
+  -H "Authorization: Bearer ${token}" \\
+  -H "content-type: application/json" \\
+  -d '{"model":"${model}","query":"hi","documents":["doc one","doc two"]}'`;
       }
       return `curl ${url}/chat/completions \\
   -H "Authorization: Bearer ${token}" \\
@@ -129,6 +160,18 @@ client = genai.Client(
 )
 client.models.generate_content(model="${model}", contents="hi")`;
       }
+      if (api === "embeddings") {
+        return `from openai import OpenAI
+client = OpenAI(base_url="${url}", api_key="${token}")
+client.embeddings.create(model="${model}", input="hi")`;
+      }
+      if (api === "rerank") {
+        return `import requests
+requests.post("${url}/rerank",
+    headers={"Authorization": "Bearer ${token}"},
+    json={"model": "${model}", "query": "hi",
+          "documents": ["doc one", "doc two"]})`;
+      }
       return `from openai import OpenAI
 client = OpenAI(base_url="${url}", api_key="${token}")
 client.${api === "responses" ? "responses.create" : "chat.completions.create"}(
@@ -156,6 +199,24 @@ const ai = new GoogleGenAI({
   httpOptions: { baseUrl: "${url}" },
 });
 await ai.models.generateContent({ model: "${model}", contents: "hi" });`;
+      }
+      if (api === "embeddings") {
+        return `import OpenAI from "openai";
+const client = new OpenAI({ baseURL: "${url}", apiKey: "${token}" });
+await client.embeddings.create({ model: "${model}", input: "hi" });`;
+      }
+      if (api === "rerank") {
+        return `await fetch("${url}/rerank", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${token}",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "${model}", query: "hi",
+    documents: ["doc one", "doc two"],
+  }),
+});`;
       }
       return `import OpenAI from "openai";
 const client = new OpenAI({ baseURL: "${url}", apiKey: "${token}" });
@@ -204,7 +265,24 @@ export default function Gateway({
   const [lang, setLang] = useState<Snippet>("powershell");
   const modelIds = useMemo(() => (models?.data ?? []).map((m) => m.id), [models]);
   const [model, setModel] = useState("");
-  const picked = model || modelIds[0] || "provider/model";
+
+  // The model list fits the API picked: chat APIs take /v1/models ids,
+  // embeddings and rerank take the providers' retrieval lists, each
+  // spelled provider/model as the route names it.
+  const apiModels = useMemo(() => {
+    if (api === "embeddings") {
+      return (config?.providers ?? []).flatMap((p) =>
+        (p.embeddings ?? []).map((m) => `${p.id}/${m}`),
+      );
+    }
+    if (api === "rerank") {
+      return (config?.providers ?? []).flatMap((p) =>
+        (p.rerankers ?? []).map((m) => `${p.id}/${m}`),
+      );
+    }
+    return modelIds;
+  }, [api, config, modelIds]);
+  const picked = model || apiModels[0] || "provider/model";
 
   const port = config?.port ?? 3426;
   const base = `http://127.0.0.1:${port}`;
@@ -275,7 +353,10 @@ export default function Gateway({
             <Segmented<ApiKind>
               label={t("gw.apiLabel")}
               value={api}
-              onChange={setApi}
+              onChange={(v) => {
+                setApi(v);
+                setModel("");
+              }}
               options={(Object.keys(APIS) as ApiKind[]).map((k) => ({
                 value: k,
                 label: APIS[k].label,
@@ -318,16 +399,21 @@ export default function Gateway({
                 value={picked}
                 onChange={(e) => setModel(e.target.value)}
                 aria-label={t("gw.modelLabel")}
+                key={api}
               >
-                {modelIds.length === 0 ? <option value={picked}>{picked}</option> : null}
-                {modelIds.map((id) => (
+                {apiModels.length === 0 ? <option value={picked}>{picked}</option> : null}
+                {apiModels.map((id) => (
                   <option key={id} value={id}>
                     {id}
                   </option>
                 ))}
               </select>
             </div>
-            <p className="gw-hint">{t("gw.modelHint")}</p>
+            <p className="gw-hint">
+              {api === "embeddings" || api === "rerank"
+                ? t(apiModels.length ? "gw.modelHintRetrieval" : "gw.modelHintRetrievalEmpty")
+                : t("gw.modelHint")}
+            </p>
           </div>
 
           <div className="gw-field">
