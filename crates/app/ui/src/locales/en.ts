@@ -408,6 +408,7 @@ export const en = {
   "prov.fetchModels": "Fetch models",
   "prov.advanced": "Advanced",
   "prov.moreEndpoints": "More endpoints",
+  "prov.moreEndpointsHelp": "Optional URLs for the vendor's other protocols. When the chosen protocol has its own URL the rest fall back to the base URL; only the selected protocol's URL is saved.",
   "prov.add": "Add",
   "prov.giveName": "Give it a name",
   "prov.needBase": "A base URL is needed",

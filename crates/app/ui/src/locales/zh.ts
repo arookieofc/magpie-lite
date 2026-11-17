@@ -408,6 +408,7 @@ export const zh = {
   "prov.fetchModels": "获取模型",
   "prov.advanced": "高级",
   "prov.moreEndpoints": "更多端点",
+  "prov.moreEndpointsHelp": "可选：为该供应商的其他协议各填一个 URL。未填的回退到上面的 Base URL；保存时按当前所选协议写入。",
   "prov.add": "添加",
   "prov.giveName": "起个名字",
   "prov.needBase": "需要 Base URL",

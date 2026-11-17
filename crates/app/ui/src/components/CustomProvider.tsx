@@ -10,6 +10,7 @@ export interface CustomDraft {
   name: string;
   protocol: string;
   baseUrl: string;
+  altUrls: Record<string, string>;
   keys: string;
   models: string;
   testModel: string;
@@ -47,6 +48,13 @@ function urlHint(v: string): string {
   if (v === "gemini") return "https://…/v1beta";
   return "https://…/v1";
 }
+
+const ENDPOINT_ORDER: { v: string; label: string }[] = [
+  { v: "chat", label: "prov.protoPillChat" },
+  { v: "responses", label: "prov.protoPillResponses" },
+  { v: "anthropic", label: "prov.protoPillAnthropic" },
+  { v: "gemini", label: "prov.protoPillGemini" },
+];
 
 export default function CustomProvider({
   draft,
@@ -423,17 +431,23 @@ export default function CustomProvider({
           <details className="cst-fold">
             <summary>{t("prov.moreEndpoints")}</summary>
             <div className="cst-fold-body">
-              <Field label={t("prov.fUrl")} htmlFor="cst-more-url">
-                <input
-                  id="cst-more-url"
-                  className="input mono"
-                  value={draft.baseUrl}
-                  onChange={(e) => set({ baseUrl: e.target.value })}
-                  placeholder={urlHint(draft.protocol)}
-                  inputMode="url"
-                />
-              </Field>
-              <p className="help">{t("prov.fUrlHelp")}</p>
+              {ENDPOINT_ORDER.filter((ep) => ep.v !== draft.protocol).map((ep) => (
+                <Field key={ep.v} label={t(ep.label as Parameters<typeof t>[0])} htmlFor={`cst-ep-${ep.v}`}>
+                  <input
+                    id={`cst-ep-${ep.v}`}
+                    className="input mono"
+                    value={draft.altUrls?.[ep.v] ?? ""}
+                    onChange={(e) =>
+                      set({
+                        altUrls: { ...(draft.altUrls ?? {}), [ep.v]: e.target.value },
+                      })
+                    }
+                    placeholder={urlHint(ep.v)}
+                    inputMode="url"
+                  />
+                </Field>
+              ))}
+              <p className="help">{t("prov.moreEndpointsHelp")}</p>
             </div>
           </details>
         </div>

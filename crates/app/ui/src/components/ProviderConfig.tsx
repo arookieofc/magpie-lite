@@ -820,12 +820,19 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         name: draft.name,
         protocol: draft.protocol,
         baseUrl: draft.baseUrl,
+        altUrls: customUrls,
         keys: draft.keys,
         models: draft.models,
         testModel: draft.testModel,
         icon: draft.icon,
       }}
-      set={(patch) => set(patch as Partial<Draft>)}
+      set={(patch) => {
+        if (patch.altUrls) {
+          setCustomUrls(patch.altUrls as Record<string, string>);
+          delete patch.altUrls;
+        }
+        set(patch as Partial<Draft>);
+      }}
       busy={busy}
       message={message}
       presets={presets}
