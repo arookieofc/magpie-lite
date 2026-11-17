@@ -836,6 +836,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       busy={busy}
       message={message}
       presets={presets}
+      discovered={discovered}
       onProtocol={switchCustomProtocol}
       onDetect={() => tool("models")}
       onTestEach={() => tool("test")}

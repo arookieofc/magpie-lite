@@ -534,6 +534,38 @@ button:disabled { cursor: not-allowed; }
 .cst-iconopt:hover { background: var(--hover); }
 .cst-iconopt.on { border-color: var(--accent-line); background: var(--accent-soft); }
 .cst-modelsrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.cst-models { display: grid; gap: 8px; min-width: 0; }
+.cst-modelbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cst-modelbar .hint { font-size: 11.5px; color: var(--muted); }
+.cst-modelbar .grow { flex: 1; }
+.cst-models .cst-modelsrow { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+
+/* Model chips: tick column reserved so picking doesn't shift neighbours */
+.mchips {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  max-height: min(240px, 40vh); overflow-y: auto; padding: 1px;
+}
+.mchips::-webkit-scrollbar { width: 0; }
+.mchip {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 9px;
+  border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--muted);
+  font: inherit; font-size: 11.5px; cursor: pointer; white-space: nowrap;
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.mchip:hover { color: var(--text); border-color: var(--border-strong); }
+.mchip:active { transform: scale(.96); }
+.mchip.pick { padding-left: 7px; }
+.mchip.pick::before {
+  content: "✓"; font-size: 10px; margin-right: -1px;
+  visibility: hidden; flex: none;
+}
+.mchip.pick.on {
+  color: var(--accent); background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.mchip.pick.on::before { visibility: visible; }
 .cst-folds { display: grid; gap: 6px; }
 .cst-fold { border: 0; }
 .cst-fold summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); padding: 4px 0; }

@@ -23,6 +23,7 @@ interface Props {
   busy: boolean;
   message: string;
   presets: VendorPreset[] | null;
+  discovered: string[];
   onProtocol: (v: string) => void;
   onDetect: () => void;
   onTestEach: () => void;
@@ -62,6 +63,7 @@ export default function CustomProvider({
   busy,
   message,
   presets,
+  discovered,
   onProtocol,
   onDetect,
   onTestEach,
@@ -81,6 +83,8 @@ export default function CustomProvider({
   const [iconMenuOpen, setIconMenuOpen] = useState(false);
   const [iconUrlMode, setIconUrlMode] = useState(false);
   const [iconUrl, setIconUrl] = useState("");
+  const [modelAddInput, setModelAddInput] = useState("");
+  const [modelFilter, setModelFilter] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Many keys pasted at once: the count, like upstream's key-count hint.
@@ -121,7 +125,55 @@ export default function CustomProvider({
   const q = iconQuery.trim().toLowerCase();
   const shownIcons = !q ? icons : icons.filter((n) => n.replace(/-color$/, "").toLowerCase().includes(q));
 
-  const modelsComma = useMemo(() => draft.models.split(/\r?\n/).filter(Boolean).join(", "), [draft.models]);
+  const pickedIds = useMemo(() => draft.models.split(/\r?\n/).filter(Boolean), [draft.models]);
+  const pickedSet = useMemo(() => new Set(pickedIds), [pickedIds]);
+
+  const pool = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const id of discovered) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+    for (const id of pickedIds) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+      }
+    }
+    return out;
+  }, [discovered, pickedIds]);
+
+  const filteredPool = useMemo(() => {
+    const f = modelFilter.trim().toLowerCase();
+    if (!f) return pool;
+    return pool.filter((id) => id.toLowerCase().includes(f));
+  }, [pool, modelFilter]);
+
+  const toggleModel = (id: string) => {
+    const next = pickedSet.has(id) ? pickedIds.filter((x) => x !== id) : [...pickedIds, id];
+    set({ models: next.join("\n") });
+  };
+  const pickAll = () => {
+    const next = [...new Set([...pickedIds, ...filteredPool])];
+    set({ models: next.join("\n") });
+  };
+  const pickNone = () => {
+    const drop = new Set(filteredPool);
+    set({ models: pickedIds.filter((x) => !drop.has(x)).join("\n") });
+  };
+  const addModel = () => {
+    const ids = modelAddInput
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!ids.length) return;
+    const next = [...new Set([...pickedIds, ...ids])];
+    set({ models: next.join("\n") });
+    setModelAddInput("");
+  };
 
   const useIconUrl = () => {
     const v = iconUrl.trim();
@@ -400,26 +452,75 @@ export default function CustomProvider({
         <label className="cst-label" htmlFor="cst-models">
           {t("prov.secModels")}
         </label>
-        <div className="cst-modelsrow">
-          <input
-            id="cst-models"
-            className="input mono"
-            value={modelsComma}
-            onChange={(e) =>
-              set({
-                models: e.target.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-                  .join("\n"),
-              })
-            }
-            placeholder={t("prov.modelsPh")}
-            spellCheck={false}
-          />
-          <button type="button" className="btn sm" disabled={busy} onClick={onFetchModels}>
-            {t("prov.fetchModels")}
-          </button>
+        <div className="cst-models">
+          <div className="cst-modelbar">
+            <button type="button" className="btn sm" onClick={pickAll} disabled={!filteredPool.length}>
+              {t("prov.pickAll")}
+            </button>
+            <button type="button" className="btn sm" onClick={pickNone} disabled={!filteredPool.length}>
+              {t("prov.pickNone")}
+            </button>
+            <span className="grow" />
+            <span className="hint" role="status">
+              {t("prov.pickedOf", { n: pickedIds.length, all: pool.length })}
+            </span>
+          </div>
+          {pool.length > 24 ? (
+            <input
+              className="input sm mono"
+              value={modelFilter}
+              onChange={(e) => setModelFilter(e.target.value)}
+              placeholder={t("prov.filterModels", { n: pool.length })}
+              aria-label={t("prov.filterModelsAria")}
+              spellCheck={false}
+            />
+          ) : null}
+          {pool.length ? (
+            <div className="mchips" role="listbox" aria-label={t("prov.secModels")} aria-multiselectable="true">
+              {filteredPool.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="option"
+                  aria-selected={pickedSet.has(id)}
+                  className={`mchip pick${pickedSet.has(id) ? " on" : ""}`}
+                  onClick={() => toggleModel(id)}
+                  title={id}
+                >
+                  {id}
+                </button>
+              ))}
+              {!filteredPool.length ? (
+                <span className="hint">{t("prov.noMatchModel", { q: modelFilter.trim() })}</span>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="cst-modelsrow">
+            <input
+              id="cst-models"
+              className="input mono"
+              value={modelAddInput}
+              onChange={(e) => setModelAddInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addModel();
+                }
+              }}
+              placeholder={t("prov.modelsPh")}
+              spellCheck={false}
+            />
+            <button type="button" className="btn sm" disabled={!modelAddInput.trim()} onClick={addModel}>
+              {t("prov.addModel")}
+            </button>
+            <button type="button" className="btn sm" disabled={busy} onClick={onFetchModels}>
+              {t("prov.fetchModels")}
+            </button>
+            <button type="button" className="btn sm" disabled={busy} onClick={onTestEach}>
+              {t("prov.testModels")}
+            </button>
+          </div>
+          <p className="help">{t("prov.modelsHelp")}</p>
         </div>
 
         <span className="cst-label" />
