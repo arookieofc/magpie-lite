@@ -132,44 +132,6 @@ export interface ModelsResponse {
   data: ModelInfo[];
 }
 
-export interface Agent {
-  id: string;
-  name: string;
-  detected?: boolean;
-  detection?: {
-    config_file: boolean;
-    config_directory: boolean;
-    cli?: { path: string; on_path: boolean | null } | null;
-    search_limited: boolean;
-  } | null;
-  connected: boolean;
-  model?: string | null;
-  drifted?: boolean;
-  recovery_needed?: boolean;
-  files?: string[];
-  notice?: string;
-}
-
-export interface AgentsResponse {
-  agents: Agent[];
-}
-
-export interface AgentPreviewFile {
-  path: string;
-  operation: string;
-  before_bytes: number;
-  after_bytes: number;
-}
-
-export interface AgentPreview {
-  agent: string;
-  action: "connect" | "disconnect";
-  model?: string | null;
-  revision: string;
-  files: AgentPreviewFile[];
-  notice: string;
-}
-
 export interface ProviderCapabilities {
   supported_protocols?: string[];
   streaming?: boolean | null;

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import * as api from "./api";
 import type {
-  AgentsResponse,
   Config,
   ModelsResponse,
   RequestRecord,
@@ -16,7 +15,6 @@ import NoticeBanner from "./components/NoticeBanner";
 import { useT } from "./i18n";
 import StatsGauge from "./components/StatsGauge";
 import Activity from "./components/Activity";
-import Agents from "./components/Agents";
 import ProviderTotals from "./components/ProviderTotals";
 import Routing from "./components/Routing";
 import RecentRequests from "./components/RecentRequests";
@@ -26,7 +24,7 @@ import Models from "./components/Models";
 import UsageByModel from "./components/UsageByModel";
 import { PageHeader } from "./components/ui";
 
-const VIEWS: View[] = ["overview", "agents", "providers", "groups", "requests"];
+const VIEWS: View[] = ["overview", "providers", "groups", "requests"];
 const THEME_KEY = "magpie-theme";
 const COLLAPSE_KEY = "magpie-sidenav-collapsed";
 
@@ -56,8 +54,6 @@ export interface GatewayData {
   stats: Stats | null;
   models: ModelsResponse | null;
   config: Config | null;
-  agents: AgentsResponse | null;
-  agentsError: string | null;
   lastUpdate: string | null;
 }
 
@@ -72,8 +68,6 @@ export default function App() {
     stats: null,
     models: null,
     config: null,
-    agents: null,
-    agentsError: null,
     lastUpdate: null,
   });
   const [message, setMessage] = useState("");
@@ -91,7 +85,6 @@ export default function App() {
   const meta = {
     overview: { title: t("view.overviewTitle"), subtitle: t("view.overviewSub") },
     requests: { title: t("view.requestsTitle"), subtitle: t("view.requestsSub") },
-    agents: { title: t("view.agentsTitle"), subtitle: t("view.agentsSub") },
     providers: { title: t("view.providersTitle"), subtitle: t("view.providersSub") },
     groups: { title: t("view.groupsTitle"), subtitle: t("view.groupsSub") },
   }[view];
@@ -147,21 +140,15 @@ export default function App() {
     async (silent: boolean) => {
       if (!silent) setRefreshing(true);
       try {
-        const [stats, models, config, agents] = await Promise.all([
+        const [stats, models, config] = await Promise.all([
           api.get<Stats>(statsPath()),
           api.get<ModelsResponse>("/v1/models"),
           api.get<Config>("/config"),
-          api
-            .get<AgentsResponse>("/agents")
-            .then((d) => ({ data: d, error: null as string | null }))
-            .catch((e: Error) => ({ data: null, error: e.message })),
         ]);
         setData({
           stats,
           models,
           config,
-          agents: agents.data,
-          agentsError: agents.error,
           lastUpdate: new Date().toLocaleTimeString([], { hour12: false }),
         });
         setRefreshFailed(false);
@@ -259,9 +246,6 @@ export default function App() {
   }, [data.config]);
 
   const nav: NavItem[] = useMemo(() => {
-    const agentList = data.agents?.agents ?? [];
-    const attention = agentList.some((a) => a.drifted || a.recovery_needed);
-    const connected = agentList.filter((a) => a.connected).length;
     const groups = (data.config?.groups ?? []).filter((g) => !g.hidden).length;
     const recent = data.stats?.recent_requests ?? [];
     const recentErrors = recent.filter((r) => r.status !== "ok").length;
@@ -272,12 +256,6 @@ export default function App() {
         labelKey: "nav.requests",
         badge: recent.length ? String(recent.length) : undefined,
         alert: recentErrors > 0,
-      },
-      {
-        id: "agents",
-        labelKey: "nav.agents",
-        badge: agentList.length ? `${connected}/${agentList.length}` : undefined,
-        alert: attention,
       },
       {
         id: "providers",
@@ -378,18 +356,6 @@ export default function App() {
               <ShieldCheck size={14} aria-hidden="true" />
               {t("page.secretNote")}
             </p>
-          </section>
-
-          <section className="view" hidden={view !== "agents"} aria-label={t("page.agentsTitle")}>
-            <Agents
-              agents={data.agents}
-              agentsError={data.agentsError}
-              models={data.models}
-              config={data.config}
-              busy={busy}
-              setBusy={setBusy}
-              onChanged={refreshAll}
-            />
           </section>
 
           <section className="view" hidden={view !== "providers"} aria-label={t("page.providersTitle")}>

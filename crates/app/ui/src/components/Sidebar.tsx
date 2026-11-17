@@ -1,5 +1,4 @@
 import {
-  Bot,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -10,7 +9,7 @@ import {
 } from "lucide-react";
 import { useT, type DictKey } from "../i18n";
 
-export type View = "overview" | "agents" | "providers" | "groups" | "requests";
+export type View = "overview" | "providers" | "groups" | "requests";
 export type ThemeChoice = "system" | "light" | "dark";
 
 export interface NavItem {
@@ -23,7 +22,6 @@ export interface NavItem {
 const ICONS: Record<View, LucideIcon> = {
   overview: LayoutDashboard,
   requests: ScrollText,
-  agents: Bot,
   providers: Server,
   groups: Waypoints,
 };
@@ -31,7 +29,7 @@ const ICONS: Record<View, LucideIcon> = {
 /* Astryx SideNav grouping: Monitor pages vs Configure pages. */
 const SECTIONS: { headingKey: DictKey; ids: View[] }[] = [
   { headingKey: "nav.monitor", ids: ["overview", "requests"] },
-  { headingKey: "nav.configure", ids: ["agents", "providers", "groups"] },
+  { headingKey: "nav.configure", ids: ["providers", "groups"] },
 ];
 
 interface Props {
