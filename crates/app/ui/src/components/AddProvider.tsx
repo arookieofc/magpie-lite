@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Import, Plus, Search } from "lucide-react";
 import { Card, Empty, Field } from "./ui";
+import { Textarea } from "./Input";
 import VendorIcon, { hostOf } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import type { ProviderConfig, VendorPreset } from "../types";
@@ -223,9 +224,9 @@ export default function AddProvider({
       {showImport ? (
         <div className="add-import">
           <Field label={t("add.impLabel")} htmlFor="add-import-text" help={t("add.impDesc")}>
-            <textarea
+            <Textarea mono
               id="add-import-text"
-              className="input mono"
+              
               rows={4}
               value={paste}
               onChange={(e) => setPaste(e.target.value)}

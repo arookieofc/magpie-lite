@@ -19,6 +19,7 @@ import AddProvider, { type PastedEndpoint } from "./AddProvider";
 import CustomProvider from "./CustomProvider";
 import QuickAdd from "./QuickAdd";
 import Select from "./Select";
+import { Input, Textarea } from "./Input";
 import { curlFill, originOfUrl, splitKeys, withOriginUrl } from "../util";
 import { servesOf } from "../serves";
 
@@ -734,19 +735,19 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     <>
       <FormSection title={t("prov.secModels")} description={t("prov.secModelsDesc")}>
         <Field label={t("prov.fContexts")} htmlFor="cst-contexts" help={t("prov.fContextsHelp")}>
-          <textarea id="cst-contexts" className="input mono" rows={3} placeholder={"deepseek-chat=131072\ndeepseek-reasoner=65536"}
+          <Textarea mono id="cst-contexts"  rows={3} placeholder={"deepseek-chat=131072\ndeepseek-reasoner=65536"}
             value={draft.contexts} onChange={(e) => set({ contexts: e.target.value })} />
         </Field>
         <Field label={t("prov.fOutputs")} htmlFor="cst-outputs" help={t("prov.fOutputsHelp")}>
-          <textarea id="cst-outputs" className="input mono" rows={3} placeholder={"claude-sonnet-4-5=32000\ngpt-5-mini=16384"}
+          <Textarea mono id="cst-outputs"  rows={3} placeholder={"claude-sonnet-4-5=32000\ngpt-5-mini=16384"}
             value={draft.outputs} onChange={(e) => set({ outputs: e.target.value })} />
         </Field>
         <Field label={t("prov.fFree")} htmlFor="cst-free" help={t("prov.fFreeHelp")}>
-          <textarea id="cst-free" className="input mono" rows={3} placeholder={"deepseek-v4.1-flash\nglm-5.3"}
+          <Textarea mono id="cst-free"  rows={3} placeholder={"deepseek-v4.1-flash\nglm-5.3"}
             value={draft.freeModels} onChange={(e) => set({ freeModels: e.target.value })} />
         </Field>
         <Field label={t("prov.fFallback")} htmlFor="cst-fallback" help={t("prov.fFallbackHelp")}>
-          <textarea id="cst-fallback" className="input mono" rows={3} placeholder={"backup/model\ngroup/daily"}
+          <Textarea mono id="cst-fallback"  rows={3} placeholder={"backup/model\ngroup/daily"}
             value={draft.fallback} onChange={(e) => set({ fallback: e.target.value })} />
         </Field>
       </FormSection>
@@ -783,17 +784,17 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
       <FormSection title={t("prov.secLimits")} description={t("prov.secLimitsDesc")}>
         <div className="form-grid">
           <Field label={t("prov.fCooldown")} htmlFor="cst-cooldown" help={t("prov.fCooldownHelp")}>
-            <input id="cst-cooldown" className="input" type="number" min="0" step="1"
+            <Input id="cst-cooldown"  type="number" min="0" step="1"
               placeholder={t("prov.cooldownPh")}
               value={draft.cooldown} onChange={(e) => set({ cooldown: e.target.value })} />
           </Field>
           <Field label={t("prov.fMaxConc")} htmlFor="cst-max-conc">
-            <input id="cst-max-conc" className="input" type="number" min="0" step="1"
+            <Input id="cst-max-conc"  type="number" min="0" step="1"
               placeholder={t("prov.noLimit")}
               value={draft.maxConcurrency} onChange={(e) => set({ maxConcurrency: e.target.value })} />
           </Field>
           <Field label={t("prov.fMaxRpm")} htmlFor="cst-max-rpm">
-            <input id="cst-max-rpm" className="input" type="number" min="0" step="1"
+            <Input id="cst-max-rpm"  type="number" min="0" step="1"
               placeholder={t("prov.noLimit")}
               value={draft.maxRpm} onChange={(e) => set({ maxRpm: e.target.value })} />
           </Field>
@@ -1096,7 +1097,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         <FormSection title={t("prov.secEndpoint")} description={t("prov.secEndpointDesc")}>
           {showServerAddress ? (
             <Field label={t("prov.serverAddress")} htmlFor="provider-address" help={t("prov.serverAddressHelp")}>
-              <input id="provider-address" className="input mono" inputMode="url" autoComplete="off" spellCheck={false}
+              <Input mono id="provider-address"  inputMode="url" autoComplete="off" spellCheck={false}
                 placeholder={originOfUrl(presetBase || draft.baseUrl)}
                 value={draft.serverAddress} onChange={(e) => onServerAddress(e.target.value)} />
             </Field>
@@ -1104,12 +1105,12 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           <div className="form-grid">
             <Field label={t("prov.fId")} htmlFor="provider-id"
               help={t("prov.fIdHelp")}>
-              <input id="provider-id" className="input mono" required pattern="[A-Za-z0-9_-]+"
+              <Input mono id="provider-id"  required pattern="[A-Za-z0-9_-]+"
                 placeholder="deepseek" readOnly={editing !== null}
                 value={draft.id} onChange={(e) => set({ id: e.target.value })} />
             </Field>
             <Field label={t("prov.fName")} htmlFor="provider-name" help={t("prov.fNameHelp")}>
-              <input id="provider-name" className="input" placeholder={t("prov.namePh")}
+              <Input id="provider-name"  placeholder={t("prov.namePh")}
                 value={draft.name} onChange={(e) => set({ name: e.target.value })} />
             </Field>
             <Field label={t("prov.fProtocol")} htmlFor="provider-protocol">
@@ -1125,7 +1126,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
             </Field>
             <Field label={isAzure ? t("prov.fEndpoint") : t("prov.fUrl")} htmlFor="provider-url"
               help={isAzure ? t("prov.azureEndpointHelp") : t("prov.fUrlHelp")}>
-              <input id="provider-url" className="input mono" type="url" required={!isAzure}
+              <Input mono id="provider-url"  type="url" required={!isAzure}
                 placeholder={isAzure && presetBase ? presetBase : "https://api.example.com/v1"}
                 value={draft.baseUrl} onChange={(e) => onBaseUrl(e.target.value)} onPaste={onPasteCurl} />
             </Field>
@@ -1168,40 +1169,40 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
         <FormSection title={t("prov.secModels")} description={t("prov.secModelsDesc")}>
           {isAzure ? <p className="help">{t("prov.azureModelsHint")}</p> : null}
           <Field label={t("prov.fModels")} htmlFor="provider-models" help={t("prov.fModelsHelp")}>
-            <textarea id="provider-models" className="input mono" rows={4} placeholder={"deepseek-chat\ndeepseek-reasoner"}
+            <Textarea mono id="provider-models"  rows={4} placeholder={"deepseek-chat\ndeepseek-reasoner"}
               value={draft.models} onChange={(e) => set({ models: e.target.value })} />
           </Field>
           <div className="form-grid">
             <Field label={t("prov.fEmbeddings")} htmlFor="provider-embeddings" help={t("prov.fEmbeddingsHelp")}>
-              <textarea id="provider-embeddings" className="input mono" rows={2} placeholder={"text-embedding-3-small\nbge-m3"}
+              <Textarea mono id="provider-embeddings"  rows={2} placeholder={"text-embedding-3-small\nbge-m3"}
                 value={draft.embeddings} onChange={(e) => set({ embeddings: e.target.value })} />
             </Field>
             <Field label={t("prov.fRerankers")} htmlFor="provider-rerankers" help={t("prov.fRerankersHelp")}>
-              <textarea id="provider-rerankers" className="input mono" rows={2} placeholder={"bge-reranker-v2-m3\nrerank-3-lite"}
+              <Textarea mono id="provider-rerankers"  rows={2} placeholder={"bge-reranker-v2-m3\nrerank-3-lite"}
                 value={draft.rerankers} onChange={(e) => set({ rerankers: e.target.value })} />
             </Field>
           </div>
           <div className="form-grid">
             <Field label={t("prov.fContexts")} htmlFor="provider-contexts" help={t("prov.fContextsHelp")}>
-              <textarea id="provider-contexts" className="input mono" rows={3} placeholder={"deepseek-chat=131072\ndeepseek-reasoner=65536"}
+              <Textarea mono id="provider-contexts"  rows={3} placeholder={"deepseek-chat=131072\ndeepseek-reasoner=65536"}
                 value={draft.contexts} onChange={(e) => set({ contexts: e.target.value })} />
             </Field>
             <Field label={t("prov.fOutputs")} htmlFor="provider-outputs" help={t("prov.fOutputsHelp")}>
-              <textarea id="provider-outputs" className="input mono" rows={3} placeholder={"claude-sonnet-4-5=32000\ngpt-5-mini=16384"}
+              <Textarea mono id="provider-outputs"  rows={3} placeholder={"claude-sonnet-4-5=32000\ngpt-5-mini=16384"}
                 value={draft.outputs} onChange={(e) => set({ outputs: e.target.value })} />
             </Field>
             <Field label={t("prov.fFree")} htmlFor="provider-free-models" help={t("prov.fFreeHelp")}>
-              <textarea id="provider-free-models" className="input mono" rows={3} placeholder={"deepseek-v4.1-flash\nglm-5.3"}
+              <Textarea mono id="provider-free-models"  rows={3} placeholder={"deepseek-v4.1-flash\nglm-5.3"}
                 value={draft.freeModels} onChange={(e) => set({ freeModels: e.target.value })} />
             </Field>
             <Field label={t("prov.fFallback")} htmlFor="provider-fallback" help={t("prov.fFallbackHelp")}>
-              <textarea id="provider-fallback" className="input mono" rows={3} placeholder={"backup/model\ngroup/daily"}
+              <Textarea mono id="provider-fallback"  rows={3} placeholder={"backup/model\ngroup/daily"}
                 value={draft.fallback} onChange={(e) => set({ fallback: e.target.value })} />
             </Field>
           </div>
           <Field label={t("prov.fTestModel")} htmlFor="provider-test-model"
             help={t("prov.fTestModelHelp")}>
-            <input id="provider-test-model" className="input mono" list="provider-discovered-models"
+            <Input mono id="provider-test-model"  list="provider-discovered-models"
               placeholder={t("prov.testPh")}
               value={draft.testModel} onChange={(e) => set({ testModel: e.target.value })} />
             <datalist id="provider-discovered-models">
@@ -1228,7 +1229,7 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           <p className="help">{t("prov.keysHelp")}</p>
           {showKeys ? (
             <Field label={t("prov.newKeys")} htmlFor="provider-keys" help={t("prov.newKeysHelp")}>
-              <textarea id="provider-keys" className={`input mono${showPoolKeys ? "" : " secret"}`} rows={3} autoComplete="off" spellCheck={false}
+              <Textarea id="provider-keys" mono secret={!showPoolKeys} rows={3} autoComplete="off" spellCheck={false}
                 value={draft.keys} onChange={(e) => set({ keys: e.target.value })} onPaste={onPasteCurl}
                 placeholder={t("prov.keyPh")} />
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1284,13 +1285,13 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
             {draft.routing === "weight" ? (
               <Field label={t("prov.fWeights")} htmlFor="provider-weights"
                 help={t("prov.fWeightsHelp")}>
-                <textarea id="provider-weights" className="input mono" rows={3} placeholder={"3\n1\n4"}
+                <Textarea mono id="provider-weights"  rows={3} placeholder={"3\n1\n4"}
                   value={draft.weights} onChange={(e) => set({ weights: e.target.value })} />
               </Field>
             ) : null}
             <Field label={t("prov.fKeyLimits")} htmlFor="provider-limits"
               help={t("prov.fKeyLimitsHelp")}>
-              <textarea id="provider-limits" className="input mono" rows={3} placeholder={"5\n2"}
+              <Textarea mono id="provider-limits"  rows={3} placeholder={"5\n2"}
                 value={draft.keyLimits} onChange={(e) => set({ keyLimits: e.target.value })} />
             </Field>
           </div>
@@ -1303,27 +1304,27 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           <div className="form-grid">
             <Field label={t("prov.fCooldown")} htmlFor="provider-cooldown"
               help={t("prov.fCooldownHelp")}>
-              <input id="provider-cooldown" className="input" type="number" min="0" step="1"
+              <Input id="provider-cooldown"  type="number" min="0" step="1"
                 placeholder={t("prov.cooldownPh")}
                 value={draft.cooldown} onChange={(e) => set({ cooldown: e.target.value })} />
             </Field>
             <Field label={t("prov.fMaxConc")} htmlFor="provider-max-concurrency">
-              <input id="provider-max-concurrency" className="input" type="number" min="0" step="1"
+              <Input id="provider-max-concurrency"  type="number" min="0" step="1"
                 placeholder={t("prov.noLimit")}
                 value={draft.maxConcurrency} onChange={(e) => set({ maxConcurrency: e.target.value })} />
             </Field>
             <Field label={t("prov.fMaxRpm")} htmlFor="provider-max-rpm">
-              <input id="provider-max-rpm" className="input" type="number" min="0" step="1"
+              <Input id="provider-max-rpm"  type="number" min="0" step="1"
                 placeholder={t("prov.noLimit")}
                 value={draft.maxRpm} onChange={(e) => set({ maxRpm: e.target.value })} />
             </Field>
             <Field label={t("prov.fQueueLimit")} htmlFor="provider-queue-limit">
-              <input id="provider-queue-limit" className="input" type="number" min="0" step="1"
+              <Input id="provider-queue-limit"  type="number" min="0" step="1"
                 placeholder={t("prov.noBound")}
                 value={draft.queueLimit} onChange={(e) => set({ queueLimit: e.target.value })} />
             </Field>
             <Field label={t("prov.fQueueWait")} htmlFor="provider-queue-wait">
-              <input id="provider-queue-wait" className="input" type="number" min="0" step="1"
+              <Input id="provider-queue-wait"  type="number" min="0" step="1"
                 placeholder={t("prov.waitPh")}
                 value={draft.queueWait} onChange={(e) => set({ queueWait: e.target.value })} />
             </Field>

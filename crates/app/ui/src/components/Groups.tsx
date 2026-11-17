@@ -20,6 +20,7 @@ import * as api from "../api";
 import type { Config, GroupConfig, ModelsResponse, ProviderConfig, RoutingRule, Stats } from "../types";
 import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Switch } from "./ui";
 import Select from "./Select";
+import { Input, Textarea } from "./Input";
 import { useT, type TFunc } from "../i18n";
 
 const RULE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -709,12 +710,12 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
               <div className="form-grid">
                 <Field label={t("groups.fId")} htmlFor="group-id"
                   help={t("groups.fIdHelp")}>
-                  <input id="group-id" className="input mono" required pattern="[A-Za-z0-9_-]+"
+                  <Input id="group-id" mono required pattern="[A-Za-z0-9_-]+"
                     placeholder="daily-coding" readOnly={editing.id !== null}
                     value={draft.id} onChange={(e) => patchDraft({ id: e.target.value })} />
                 </Field>
                 <Field label={t("groups.fName")} htmlFor="group-name" help={t("groups.fNameHelp")}>
-                  <input id="group-name" className="input" placeholder="Daily coding"
+                  <Input id="group-name" placeholder="Daily coding"
                     value={draft.name} onChange={(e) => patchDraft({ name: e.target.value })} />
                 </Field>
               </div>
@@ -749,8 +750,8 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                       </label>
                       <label className="member-field grow">
                         <span>{t("groups.memberModel")}</span>
-                        <input
-                          className="input mono"
+                        <Input
+                          mono
                           list={listId}
                           placeholder="deepseek-chat"
                           spellCheck={false}
@@ -779,8 +780,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                       {draft.routing === "weight" ? (
                         <label className="member-field tiny">
                           <span>{t("groups.memberWeight")}</span>
-                          <input
-                            className="input"
+                          <Input
                             type="number"
                             min="0"
                             max="1000"
@@ -887,13 +887,13 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
               <div className="form-grid">
                 <Field label={t("groups.fFirstToken")} htmlFor="group-first-token"
                   help={t("groups.fFirstTokenHelp")}>
-                  <input id="group-first-token" className="input" type="number" min="0"
+                  <Input id="group-first-token" type="number" min="0"
                     max="9007199254740991" step="1" required
                     value={draft.firstToken} onChange={(e) => patchDraft({ firstToken: e.target.value })} />
                 </Field>
                 <Field label={t("groups.fPatience")} htmlFor="group-patience"
                   help={t("groups.fPatienceHelp")}>
-                  <input id="group-patience" className="input" type="number" min="-9007199254740991"
+                  <Input id="group-patience" type="number" min="-9007199254740991"
                     max="9007199254740991" step="1" placeholder={t("groups.patiencePh")}
                     value={draft.patience} onChange={(e) => patchDraft({ patience: e.target.value })} />
                 </Field>
@@ -921,9 +921,9 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                           : []),
                       ]}
                     />
-                    <input
+                    <Input mono
                       id="group-classifier"
-                      className="input mono"
+                      
                       list="group-classifier-models"
                       placeholder="deepseek-chat"
                       spellCheck={false}
@@ -958,7 +958,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                 </Field>
                 <Field label={t("groups.fLevels")} htmlFor="group-levels"
                   help={t("groups.fLevelsHelp")}>
-                  <input id="group-levels" className="input mono" placeholder="low, high" spellCheck={false}
+                  <Input mono id="group-levels"  placeholder="low, high" spellCheck={false}
                     value={draft.levels} onChange={(e) => patchDraft({ levels: e.target.value })} />
                 </Field>
               </div>
@@ -1007,7 +1007,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                   <p className="rule-form-sub">{t("groups.whenMatch")}</p>
                   <div className="form-grid four">
                     <Field label={t("groups.fTokens")} htmlFor="rule-tokens">
-                      <input id="rule-tokens" className="input" type="number" min="0" step="1" placeholder="0"
+                      <Input id="rule-tokens"  type="number" min="0" step="1" placeholder="0"
                         value={rule.tokens} onChange={(e) => patchRule({ tokens: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fReasoning")} htmlFor="rule-effort">
@@ -1024,23 +1024,23 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                       />
                     </Field>
                     <Field label={t("groups.fAgents")} htmlFor="rule-agents">
-                      <input id="rule-agents" className="input" placeholder="claude, codex" spellCheck={false}
+                      <Input id="rule-agents"  placeholder="claude, codex" spellCheck={false}
                         value={rule.agents} onChange={(e) => patchRule({ agents: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fIntent")} htmlFor="rule-intent">
-                      <input id="rule-intent" className="input" placeholder="research" spellCheck={false}
+                      <Input id="rule-intent"  placeholder="research" spellCheck={false}
                         value={rule.intent} onChange={(e) => patchRule({ intent: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fBetween")} htmlFor="rule-time-from">
-                      <input id="rule-time-from" className="input mono" placeholder="22:00" spellCheck={false}
+                      <Input mono id="rule-time-from"  placeholder="22:00" spellCheck={false}
                         value={rule.from} onChange={(e) => patchRule({ from: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fAnd")} htmlFor="rule-time-to">
-                      <input id="rule-time-to" className="input mono" placeholder="08:00" spellCheck={false}
+                      <Input mono id="rule-time-to"  placeholder="08:00" spellCheck={false}
                         value={rule.to} onChange={(e) => patchRule({ to: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fDays")} htmlFor="rule-days">
-                      <input id="rule-days" className="input" placeholder="mon, tue" spellCheck={false}
+                      <Input id="rule-days"  placeholder="mon, tue" spellCheck={false}
                         value={rule.days} onChange={(e) => patchRule({ days: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fAskEffort")} htmlFor="rule-use-effort">
@@ -1056,11 +1056,11 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                   <div className="form-grid">
                     <Field label={t("groups.fFolderIn")} htmlFor="rule-folders"
                       help={t("groups.fFolderInHelp")}>
-                      <textarea id="rule-folders" className="input mono" rows={2} placeholder="/home/user/project"
+                      <Textarea mono id="rule-folders"  rows={2} placeholder="/home/user/project"
                         spellCheck={false} value={rule.folders} onChange={(e) => patchRule({ folders: e.target.value })} />
                     </Field>
                     <Field label={t("groups.fFolderOut")} htmlFor="rule-except-folders">
-                      <textarea id="rule-except-folders" className="input mono" rows={2} placeholder="/home/user/scratch"
+                      <Textarea mono id="rule-except-folders"  rows={2} placeholder="/home/user/scratch"
                         value={rule.exceptFolders} onChange={(e) => patchRule({ exceptFolders: e.target.value })} />
                     </Field>
                   </div>
@@ -1134,9 +1134,9 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
             </div>
             <div className="setting-control">
               <div className="input-group">
-                <input
+                <Input mono
                   id="vision-model"
-                  className="input mono"
+                  
                   list="agent-model-options"
                   placeholder={t("groups.visionPh")}
                   spellCheck={false}

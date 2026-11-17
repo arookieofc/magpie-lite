@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { useLocale, useT } from "../i18n";
+import { Input } from "./Input";
 
 const POP_W = 288;
 
@@ -306,8 +307,8 @@ export function DatePicker({
           {(["h", "m", "s"] as const).map((part, i) => (
             <Fragment key={part}>
               {i > 0 ? <span className="dp-sep">:</span> : null}
-              <input
-                className="input"
+              <Input
+                
                 inputMode="numeric"
                 aria-label={
                   part === "h" ? t("dp.hours") : part === "m" ? t("dp.minutes") : t("dp.seconds")

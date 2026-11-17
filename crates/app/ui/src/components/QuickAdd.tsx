@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Notice, Segmented } from "./ui";
+import { Input } from "./Input";
 import VendorIcon from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import type { VendorPreset } from "../types";
@@ -117,10 +118,10 @@ export default function QuickAdd({ preset, pair, busy, onPickRegion, onClose, on
           <div className="quick-row">
             <label className="quick-label" htmlFor="quick-key">{t("prov.keysLabel")}</label>
             <div className="quick-keybox">
-              <input
+              <Input mono
                 id="quick-key"
                 ref={inputRef}
-                className="input mono"
+                
                 type={show ? "text" : "password"}
                 value={keys}
                 onChange={(e) => setKeys(e.target.value)}

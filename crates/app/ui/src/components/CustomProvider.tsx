@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Box } from "lucide-react";
 import { Field, Notice } from "./ui";
+import { Input } from "./Input";
 import VendorIcon from "./vendorIcon";
 import { useT } from "../i18n";
 import type { VendorPreset } from "../types";
@@ -249,9 +250,9 @@ export default function CustomProvider({
         <label className="cst-label" htmlFor="cst-name">
           {t("prov.cstName")}
         </label>
-        <input
+        <Input
           id="cst-name"
-          className="input"
+          
           value={draft.name}
           onChange={(e) => set({ name: e.target.value })}
           placeholder={t("prov.namePh")}
@@ -283,8 +284,8 @@ export default function CustomProvider({
               {t("prov.protoPillSystem")}
             </button>
           </div>
-          <input
-            className="input mono"
+          <Input mono
+            
             value={draft.baseUrl}
             onChange={(e) => set({ baseUrl: e.target.value })}
             onPaste={onPasteCurl}
@@ -296,8 +297,8 @@ export default function CustomProvider({
             <button type="button" className="btn sm" disabled={busy} onClick={onDetect}>
               {t("prov.detect")}
             </button>
-            <input
-              className="input"
+            <Input
+              
               value={draft.testModel}
               onChange={(e) => set({ testModel: e.target.value })}
               placeholder={t("prov.probePh")}
@@ -313,9 +314,9 @@ export default function CustomProvider({
           {t("prov.keysLabel")}
         </label>
         <div className="cst-keyrow">
-          <input
+          <Input mono
             id="cst-key"
-            className="input mono"
+            
             type={showKey ? "text" : "password"}
             value={draft.keys}
             onChange={(e) => set({ keys: e.target.value })}
@@ -444,8 +445,9 @@ export default function CustomProvider({
           <>
             <span className="cst-blank" />
             <div className="cst-iconurlrow">
-              <input
-                className="input mono sm"
+              <Input
+                mono
+                size="sm"
                 value={iconUrl}
                 onChange={(e) => setIconUrl(e.target.value)}
                 onKeyDown={(e) => {
@@ -471,8 +473,8 @@ export default function CustomProvider({
           ) : null}
         {builtinOpen ? (
           <div className="cst-icongrid-wrap">
-            <input
-              className="input sm"
+            <Input
+              size="sm"
               value={iconQuery}
               onChange={(e) => setIconQuery(e.target.value)}
               placeholder={t("prov.search")}
@@ -518,8 +520,9 @@ export default function CustomProvider({
             </span>
           </div>
           {pool.length > 24 ? (
-            <input
-              className="input sm mono"
+            <Input
+              mono
+              size="sm"
               value={modelFilter}
               onChange={(e) => setModelFilter(e.target.value)}
               placeholder={t("prov.filterModels", { n: pool.length })}
@@ -559,9 +562,9 @@ export default function CustomProvider({
             </div>
           ) : null}
           <div className="cst-modelsrow">
-            <input
+            <Input mono
               id="cst-models"
-              className="input mono"
+              
               value={modelAddInput}
               onChange={(e) => setModelAddInput(e.target.value)}
               onKeyDown={(e) => {
@@ -597,9 +600,9 @@ export default function CustomProvider({
             <div className="cst-fold-body">
               {ENDPOINT_ORDER.filter((ep) => ep.v !== draft.protocol).map((ep) => (
                 <Field key={ep.v} label={t(ep.label as Parameters<typeof t>[0])} htmlFor={`cst-ep-${ep.v}`}>
-                  <input
+                  <Input mono
                     id={`cst-ep-${ep.v}`}
-                    className="input mono"
+                    
                     value={draft.altUrls?.[ep.v] ?? ""}
                     onChange={(e) =>
                       set({

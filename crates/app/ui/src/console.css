@@ -712,11 +712,14 @@ code.route {
   transition: border-color var(--fast), box-shadow var(--fast);
 }
 .input.mono { font-family: var(--mono); font-size: 12.5px; }
+.input.sm { height: 28px; padding: 0 8px; font-size: 12.5px; }
 textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height: 1.5; resize: vertical; }
 select.input { padding-right: 28px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
 .input::placeholder { color: var(--subtle); }
 .input:hover:not(:disabled):not(:focus) { border-color: var(--subtle); }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.input[aria-invalid="true"] { border-color: var(--bad); }
+.input[aria-invalid="true"]:focus { border-color: var(--bad); box-shadow: var(--ring); }
 .input:disabled { opacity: .55; }
 .input[readonly] { background: var(--surface-3); color: var(--muted); }
 .input.secret { -webkit-text-security: disc; }
