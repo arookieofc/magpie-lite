@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   Network,
@@ -64,6 +65,97 @@ export function MagpieMark({ size = 18 }: { size?: number }) {
   );
 }
 
+/* The selection is one shape, not a per-row paint: a pill that springs to
+   the open page's row, as upstream's .nav-top-hl does. Reduced-motion
+   jumps straight there. */
+const SPRING = { response: 0.42, damping: 0.84 };
+
+function NavHighlight({ nav }: { nav: HTMLElement | null }) {
+  const ref = useRef<HTMLElement>(null);
+  const state = useRef({ y: 0, h: 0, vy: 0, vh: 0, at: 0, raf: 0, seen: false });
+
+  useEffect(() => {
+    const hl = ref.current;
+    if (!hl || !nav) return;
+    const row = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!row) {
+      hl.hidden = true;
+      state.current.raf && cancelAnimationFrame(state.current.raf);
+      state.current.raf = 0;
+      return;
+    }
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const s = state.current;
+    const target = row;
+    const put = () => {
+      s.y = target.offsetTop;
+      s.h = target.offsetHeight;
+      s.vy = s.vh = 0;
+      hl.style.transform = `translateY(${s.y}px)`;
+      hl.style.height = `${s.h}px`;
+    };
+    if (calm || !s.seen) {
+      hl.hidden = false;
+      put();
+      s.seen = true;
+      return;
+    }
+    hl.hidden = false;
+    if (!s.raf) {
+      s.at = performance.now();
+      s.raf = requestAnimationFrame(step);
+    }
+    function step(now: number) {
+      if (!hl) { s.raf = 0; return; }
+      const dt = Math.min(1 / 30, Math.max(0, (now - s.at) / 1000));
+      s.at = now;
+      const k = (2 * Math.PI / SPRING.response) ** 2;
+      const c = (4 * Math.PI * SPRING.damping) / SPRING.response;
+      const ty = target.offsetTop;
+      const th = target.offsetHeight;
+      for (let i = 0, d = dt / 4; i < 4; i++) {
+        s.vy += (k * (ty - s.y) - c * s.vy) * d;
+        s.y += s.vy * d;
+        s.vh += (k * (th - s.h) - c * s.vh) * d;
+        s.h += s.vh * d;
+      }
+      const still =
+        Math.abs(ty - s.y) < 0.25 &&
+        Math.abs(s.vy) < 4 &&
+        Math.abs(th - s.h) < 0.25 &&
+        Math.abs(s.vh) < 4;
+      if (still) {
+        put();
+        s.raf = 0;
+        return;
+      }
+      hl.style.transform = `translateY(${s.y}px)`;
+      hl.style.height = `${s.h}px`;
+      s.raf = requestAnimationFrame(step);
+    }
+    return () => {
+      if (s.raf) cancelAnimationFrame(s.raf);
+      s.raf = 0;
+    };
+  });
+
+  useEffect(() => {
+    if (!nav) return;
+    const ro = new ResizeObserver(() => {
+      const hl = ref.current;
+      const row = nav.querySelector<HTMLElement>('[aria-current="page"]');
+      if (hl && row && !hl.hidden) {
+        hl.style.transform = `translateY(${row.offsetTop}px)`;
+        hl.style.height = `${row.offsetHeight}px`;
+      }
+    });
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, [nav]);
+
+  return <i ref={ref} className="nav-top-hl" hidden aria-hidden="true" />;
+}
+
 /* Astryx SideNav five zones: header / topContent / children (scrollable) /
    footer / footerIcons. TopContent is reserved for a future quick action
    (e.g. "New provider") and intentionally left empty. */
@@ -78,6 +170,7 @@ export default function Sidebar({
   onToggleCollapse,
 }: Props) {
   const t = useT();
+  const navRef = useRef<HTMLElement>(null);
   const sync = refreshFailed
     ? t("side.refreshFailed")
     : lastUpdate
@@ -85,6 +178,59 @@ export default function Sidebar({
       : t("side.loading");
   const byId = new Map(items.map((item) => [item.id, item]));
   const CollapseIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+
+  // navlamp: the row under the pointer glows, following it with a little
+  // lag and fading as it moves on — upstream's pointer-lit sidebar.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const lit = new Map<HTMLElement, number>();
+    let at: HTMLElement | null = null;
+    let tx = 0, x = 0, raf = 0;
+    const calm = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function frame() {
+      raf = 0;
+      const still = calm();
+      const row = at && at.isConnected ? at : null;
+      if (row && !lit.has(row)) lit.set(row, 0);
+      x = still ? tx : x + (tx - x) * 0.22;
+      let busy = Math.abs(tx - x) > 0.3;
+      for (const [s, v] of lit) {
+        const to = s === row ? 1 : 0;
+        const now = still ? to : v + (to - v) * (to > v ? 0.22 : 0.1);
+        if (!to && (now < 0.01 || !s.isConnected)) {
+          lit.delete(s);
+          s.classList.remove("lit");
+          s.style.removeProperty("--si");
+          s.style.removeProperty("--lx");
+          continue;
+        }
+        if (Math.abs(to - now) > 0.002) busy = true;
+        lit.set(s, now);
+        s.classList.add("lit");
+        s.style.setProperty("--si", now.toFixed(3));
+        s.style.setProperty("--lx", (x - s.getBoundingClientRect().left).toFixed(1) + "px");
+      }
+      if (busy) raf = requestAnimationFrame(frame);
+    }
+    const go = () => { if (!raf) raf = requestAnimationFrame(frame); };
+    const onMove = (e: PointerEvent) => {
+      const link = e.pointerType === "touch" ? null : (e.target as Element).closest?.(".side-link, .side-gw");
+      const word = link?.querySelector<HTMLElement>(":scope > span");
+      if (word && !at) x = e.clientX;
+      tx = e.clientX;
+      if (word !== at) at = word ?? null;
+      if (at || lit.size) go();
+    };
+    const onLeave = () => { at = null; go(); };
+    document.addEventListener("pointermove", onMove, { passive: true });
+    document.documentElement.addEventListener("pointerleave", onLeave);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.documentElement.removeEventListener("pointerleave", onLeave);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
 
   return (
     <aside className={`side${collapsed ? " collapsed" : ""}`} aria-label={t("shell.navLabel")}>
@@ -102,7 +248,8 @@ export default function Sidebar({
       </div>
 
       {/* children (scrollable) */}
-      <nav className="side-nav">
+      <nav className="side-nav" ref={navRef}>
+        <NavHighlight nav={navRef.current} />
         {SECTIONS.map((section) => (
           <div className="side-section" key={section.headingKey}>
             <p className="side-heading">{t(section.headingKey)}</p>
