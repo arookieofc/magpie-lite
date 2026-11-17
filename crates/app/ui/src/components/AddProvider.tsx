@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Import, Plus, Search } from "lucide-react";
 import { Card, Empty, Field } from "./ui";
 import VendorIcon, { hostOf } from "./vendorIcon";
@@ -72,6 +72,40 @@ export default function AddProvider({
   const [query, setQuery] = useState("");
   const [paste, setPaste] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const searchHint = t("add.search");
+
+  // The search box is as wide as its hint, like upstream's add sheet:
+  // measure the hint and size the box by it so it never cuts off.
+  useLayoutEffect(() => {
+    const input = searchRef.current;
+    const box = input?.parentElement;
+    if (!input || !box) return;
+    const size = () => {
+      const cs = getComputedStyle(input);
+      const ctx = document.createElement("canvas").getContext("2d");
+      if (!ctx) return;
+      ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const text = ctx.measureText(searchHint).width;
+      const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const icon = input.previousElementSibling?.getBoundingClientRect().width ?? 0;
+      const gap = parseFloat(getComputedStyle(box).columnGap || "0");
+      // Canvas under-measures CJK fallback glyphs, so keep generous
+      // room; the box still tracks the hint width like upstream's.
+      const chrome = pad + icon + gap + 48;
+      box.style.width = `${Math.ceil(text + chrome)}px`;
+    };
+    size();
+    // Web fonts load after first measure and widen CJK glyphs; re-size
+    // once they arrive so the hint still fits.
+    let live = true;
+    document.fonts?.ready.then(() => {
+      if (live) size();
+    }).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [searchHint]);
 
   const addedHosts = useMemo(
     () => new Set(providers.map((p) => hostOf(p.base_url))),
@@ -139,6 +173,7 @@ export default function AddProvider({
         <label className="pv-search add-search">
           <Search size={14} aria-hidden="true" />
           <input
+              ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onPaste={(e) => {
@@ -156,8 +191,8 @@ export default function AddProvider({
               if (query) setQuery("");
               else if (canClose) onClose();
             }}
-            placeholder={t("add.search")}
-            aria-label={t("add.search")}
+              placeholder={searchHint}
+              aria-label={searchHint}
           />
         </label>
         <button

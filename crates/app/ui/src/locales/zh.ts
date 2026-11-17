@@ -509,6 +509,10 @@ export const zh = {
   "add.impOnlyUrl": "只找到地址，密钥还需手动填写。",
   "add.impNotFound": "这次粘贴里没有可用地址。",
   "add.impUse": "填入表单",
+  "quick.endpoints": "端点",
+  "quick.privacy": "密钥只保存在本机网关配置中，保存后不再显示。",
+  "quick.advancedHint": "添加后可在供应商行内编辑器中继续调整模型、路由与限流等设置。",
+  "quick.needKey": "{name} 需要 API 密钥",
 
   "groups.new": "新建分组",
   "groups.newTitle": "新建路由分组",

@@ -1168,7 +1168,7 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
   border-bottom: 1px solid var(--border);
 }
 .add-title { font-size: 13.5px; font-weight: 650; }
-.add-search { height: 32px; max-width: 340px; }
+.add-search { height: 32px; flex: 0 1 auto; max-width: 100%; }
 .btn.on { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
 .add-import {
   display: grid; gap: 10px;
@@ -1181,7 +1181,7 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
 .kind { display: flex; align-items: baseline; gap: 8px; padding: 8px 2px 6px; }
 .kind b { font-size: 13px; font-weight: 650; }
 .kind span { font-size: 11.5px; color: var(--muted); }
-.tiles .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 12px; }
+.tiles .grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px 12px; }
 .tile {
   display: flex; align-items: center; gap: 10px; min-width: 0;
   padding: 7px 8px; border: 0; border-radius: 8px;
@@ -1198,6 +1198,12 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
 }
 .tiles .none { padding: 8px 2px; font-size: 13px; color: var(--text-2); }
 .tiles .none .link { margin: 0 4px; }
+@media (max-width: 1280px) {
+  .tiles .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 1080px) {
+  .tiles .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 900px) {
   .tiles .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -1205,6 +1211,48 @@ select.input { padding-right: 28px; appearance: none; background-image: linear-g
   .tiles .grid { grid-template-columns: minmax(0, 1fr); }
   .add-search { max-width: none; flex-basis: 100%; order: 5; }
 }
+
+/* ── Quick add modal, mirroring upstream's centered add dialog ──────── */
+.quick-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center; padding: 20px;
+  background: var(--scrim);
+}
+.quick {
+  width: min(520px, 100%); max-height: min(640px, calc(100vh - 60px));
+  display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--shadow-lg); overflow: hidden;
+}
+.quick-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.quick-head h2 { font-size: 15px; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+.quick-spacer { flex: 1; }
+.quick-head .link.site { white-space: nowrap; }
+.quick-body { display: grid; gap: 10px; padding: 16px 18px; overflow-y: auto; align-content: start; }
+.quick-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: center; }
+.quick-row > .help { margin: 0; }
+.quick-label { font-size: 13px; color: var(--text); }
+.quick-keybox { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.quick-keybox .input { flex: 1; min-width: 0; }
+.quick-keybox .link { white-space: nowrap; flex: none; }
+.quick-eps { align-items: start; }
+.quick-eps .quick-label { padding-top: 2px; }
+.quick-eplist { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.quick-eplist li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 12.5px; }
+.quick-proto { color: var(--muted); }
+.quick-url { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
+  .quick-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .quick-eplist li { grid-template-columns: 76px minmax(0, 1fr); }
+}
+.quick-fold { border: 0; }
+.quick-fold summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); padding: 4px 0; }
+.quick-fold summary::before { content: ">"; color: var(--subtle); font-size: 12px; width: 12px; }
+.quick-fold[open] summary::before { content: "⌄"; }
+.quick-fold summary::-webkit-details-marker { display: none; }
+.quick-fold-body { padding: 4px 0 4px 18px; }
+.quick-foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--surface-2); }
 .caps { display: flex; flex-wrap: wrap; gap: 4px; }
 .cap {
   display: inline-flex; align-items: center; gap: 3px;

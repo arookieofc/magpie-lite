@@ -509,6 +509,10 @@ export const en = {
   "add.impOnlyUrl": "Found a URL; the key still needs pasting.",
   "add.impNotFound": "No usable URL in this paste yet.",
   "add.impUse": "Fill the form",
+  "quick.endpoints": "Endpoints",
+  "quick.privacy": "Keys are stored locally with this gateway and never displayed again.",
+  "quick.advancedHint": "More settings (models, routing, limits) can be tuned in the provider editor after adding.",
+  "quick.needKey": "{name} needs an API key",
 
   "groups.new": "New group",
   "groups.newTitle": "New routing group",

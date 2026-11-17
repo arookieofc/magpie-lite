@@ -17,6 +17,7 @@ import VendorIcon, { hostOf, presetIconForHost } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 import AddProvider, { type PastedEndpoint } from "./AddProvider";
 import CustomProvider from "./CustomProvider";
+import QuickAdd from "./QuickAdd";
 import { curlFill, originOfUrl, splitKeys, withOriginUrl } from "../util";
 
 function policyLabel(v: string, t: TFunc): string {
@@ -242,6 +243,11 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
   // Which vendor tile spawned the new draft, so the editor head shows
   // its icon and name like upstream's `editing={preset}` state.
   const [preset, setPreset] = useState<VendorPreset | null>(null);
+  // The quick-add modal, mirroring upstream's centered add dialog: a
+  // vendor tile asks for keys only, then saves with the preset's own
+  // endpoints. The full editor stays for custom builds and row edits.
+  const [quick, setQuick] = useState<VendorPreset | null>(null);
+  const [quickMsg, setQuickMsg] = useState("");
   const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
   const booted = useRef(false);
   useEffect(() => {
@@ -282,6 +288,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     setEditing(null);
     setCustomMode(true);
     setPreset(null);
+    setQuick(null);
+    setQuickMsg("");
     setCustomUrls({});
     const draft = blankDraft(providers.length === 0);
     if (prefill?.baseUrl) draft.baseUrl = prefill.baseUrl;
@@ -296,24 +304,125 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
 
   function openPreset(pr: VendorPreset) {
     if (busy) return;
-    const used = new Set(providers.map((p) => p.id));
-    let id = pr.id, n = 2;
-    while (used.has(id)) id = `${pr.id}-${n++}`;
+    // Azure lives at the user's own resource endpoint, so it keeps the
+    // full editor where that endpoint is required and labeled.
+    if (pr.id === "azure" || pr.id.startsWith("azure-")) {
+      const used = new Set(providers.map((p) => p.id));
+      let id = pr.id, n = 2;
+      while (used.has(id)) id = `${pr.id}-${n++}`;
+      setAdding(false);
+      setEditing(null);
+      setCustomMode(false);
+      setQuick(null);
+      setQuickMsg("");
+      setPreset(pr);
+      setDraft({
+        ...blankDraft(providers.length === 0),
+        id,
+        name: pr.name,
+        protocol: pr.protocol,
+        baseUrl: pr.chat || pr.responses || pr.anthropic || pr.gemini || "",
+        serverAddress: originOfUrl(pr.chat || pr.responses || pr.anthropic || pr.gemini || ""),
+        keyMode: "replace",
+      });
+      setMessage("");
+      setDiscovered([]);
+      return;
+    }
     setAdding(false);
-    setEditing(null);
+    setEditing(false);
     setCustomMode(false);
-    setPreset(pr);
-    setDraft({
-      ...blankDraft(providers.length === 0),
-      id,
-      name: pr.name,
-      protocol: pr.protocol,
-      baseUrl: pr.chat || pr.responses || pr.anthropic || pr.gemini || "",
-      serverAddress: originOfUrl(pr.chat || pr.responses || pr.anthropic || pr.gemini || ""),
-      keyMode: "replace",
-    });
+    setPreset(null);
+    setQuick(pr);
+    setQuickMsg("");
     setMessage("");
     setDiscovered([]);
+  }
+
+  // A vendor's global and China endpoints are one tile in the Add sheet
+  // but two presets: the quick dialog switches between them, like
+  // upstream's `segs area` Region row.
+  const quickPair: VendorPreset[] | null =
+    quick?.pair
+      ? (presets ?? [])
+          .filter((p) => p.pair === quick.pair)
+          .sort((a, b) => (a.id.endsWith("-cn") ? 1 : 0) - (b.id.endsWith("-cn") ? 1 : 0))
+      : null;
+  const quickPairShown = quickPair && quickPair.length === 2 ? quickPair : null;
+
+  function switchQuick(next: VendorPreset) {
+    if (busy || !next || next.id === quick?.id) return;
+    setQuick(next);
+    setQuickMsg("");
+  }
+
+  async function quickSave(keysText: string) {
+    if (busy || !quick) return;
+    const keys = splitKeys(keysText);
+    if (!keys.length && quick.kind !== "local") {
+      setQuickMsg(t("quick.needKey", { name: quick.name }));
+      return;
+    }
+    const baseUrl = quick.chat || quick.responses || quick.anthropic || quick.gemini || "";
+    if (!baseUrl) {
+      setQuickMsg(t("prov.needBase"));
+      return;
+    }
+    const used = new Set(providers.map((p) => p.id));
+    let id = quick.id, n = 2;
+    while (used.has(id)) id = `${quick.id}-${n++}`;
+    const body: Record<string, unknown> = {
+      id,
+      name: quick.name,
+      protocol: quick.protocol,
+      capabilities: {
+        supported_protocols: [
+          ...new Set(
+            [
+              quick.chat ? "chat" : null,
+              quick.responses ? "responses" : null,
+              quick.anthropic ? "anthropic" : null,
+              quick.gemini ? "gemini" : null,
+              quick.protocol,
+            ].filter(Boolean),
+          ),
+        ],
+        streaming: null,
+        tools: null,
+        vision: null,
+      },
+      base_url: baseUrl,
+      models: [],
+      contexts: {},
+      outputs: {},
+      free_models: [],
+      fallback: [],
+      key_cooldown_ms: null,
+      max_concurrency: null,
+      max_rpm: null,
+      queue_limit: null,
+      queue_wait_s: null,
+      pin_upstream: false,
+      make_default: providers.length === 0,
+      routing: "rotate",
+      affinity: "auto",
+      key_limits: [],
+      weights: [],
+      api_keys: keys,
+    };
+    setBusy(true);
+    setQuickMsg(t("prov.saving"));
+    try {
+      await api.request("/config/providers", "POST", body);
+      setQuick(null);
+      setQuickMsg("");
+      setMessage(t("prov.saved"));
+      onChanged();
+    } catch (err) {
+      setQuickMsg((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   // A vendor's global and China endpoints are one tile in the Add sheet
@@ -356,6 +465,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     setEditing(p.id);
     setCustomMode(false);
     setPreset(null);
+    setQuick(null);
+    setQuickMsg("");
     setDraft(draftFrom(p, config?.default_provider === p.id));
     setMessage("");
     setDiscovered([]);
@@ -365,6 +476,8 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
     setEditing(false);
     setCustomMode(false);
     setPreset(null);
+    setQuick(null);
+    setQuickMsg("");
     setMessage("");
   }
 
@@ -1221,6 +1334,22 @@ export default function ProviderConfig({ config, busy, setBusy, onChanged }: Pro
           onPickCustom={openCustom}
           onOpen={openEdit}
           onClose={() => setAdding(false)}
+        />
+      ) : null}
+
+      {quick ? (
+        <QuickAdd
+          preset={quick}
+          pair={quickPairShown}
+          busy={busy}
+          onPickRegion={switchQuick}
+          onClose={() => {
+            if (busy) return;
+            setQuick(null);
+            setQuickMsg("");
+          }}
+          onSave={quickSave}
+          message={quickMsg}
         />
       ) : null}
 
