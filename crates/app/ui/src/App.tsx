@@ -279,6 +279,8 @@ export default function App() {
           view={view}
           lastUpdate={data.lastUpdate}
           refreshFailed={refreshFailed}
+          gatewayPort={data.config?.port}
+          healthy={healthy}
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((c) => !c)}
         />

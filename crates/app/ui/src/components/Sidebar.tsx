@@ -39,6 +39,8 @@ interface Props {
   view: View;
   lastUpdate: string | null;
   refreshFailed: boolean;
+  gatewayPort?: number;
+  healthy?: boolean | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -70,6 +72,8 @@ export default function Sidebar({
   view,
   lastUpdate,
   refreshFailed,
+  gatewayPort,
+  healthy,
   collapsed,
   onToggleCollapse,
 }: Props) {
@@ -129,10 +133,15 @@ export default function Sidebar({
 
       {/* footer (sticky bottom) */}
       <div className="side-foot">
-        <div className="gw-status" role="status" aria-live="polite" title={sync}>
-          <span className="pulse" aria-hidden="true" />
-          <span className="gw-sync">{sync}</span>
-        </div>
+        <a
+          className={`side-gw${healthy === false ? " off" : ""}`}
+          href="#gateway"
+          role="status"
+          title={sync}
+        >
+          <i aria-hidden="true" />
+          <span>{t("nav.gateway")} 127.0.0.1:{gatewayPort ?? 3426}</span>
+        </a>
       </div>
 
       {/* footerIcons */}
