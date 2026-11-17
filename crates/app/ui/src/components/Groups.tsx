@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   CircleAlert,
   Eye,
@@ -15,7 +17,7 @@ import {
   Waypoints,
 } from "lucide-react";
 import * as api from "../api";
-import type { Config, GroupConfig, ModelsResponse, RoutingRule, Stats } from "../types";
+import type { Config, GroupConfig, ModelsResponse, ProviderConfig, RoutingRule, Stats } from "../types";
 import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Switch } from "./ui";
 import { useT, type TFunc } from "../i18n";
 
@@ -60,10 +62,9 @@ interface Props {
 interface Draft {
   id: string;
   name: string;
-  routes: string;
+  members: MemberRow[];
   routing: string;
   pick: string;
-  weights: string;
   affinity: string;
   firstToken: string;
   patience: string;
@@ -96,13 +97,62 @@ const lines = (value: string) =>
     .map((line) => line.trim())
     .filter(Boolean);
 
+interface MemberRow {
+  provider: string;
+  model: string;
+  level: string;
+  weight: string;
+}
+
+const blankMember = (): MemberRow => ({ provider: "", model: "", level: "", weight: "" });
+
+function splitMemberRoute(
+  route: string,
+  providers: ProviderConfig[],
+): MemberRow {
+  const trimmed = route.trim();
+  const slash = trimmed.indexOf("/");
+  if (slash <= 0) return { provider: "", model: trimmed, level: "", weight: "" };
+  const provider = trimmed.slice(0, slash);
+  let rest = trimmed.slice(slash + 1);
+  let level = "";
+  const colon = rest.lastIndexOf(":");
+  if (colon > 0) {
+    const tail = rest.slice(colon + 1).toLowerCase();
+    if (LEVELS.includes(tail)) {
+      const known = providers
+        .find((p) => p.id === provider)
+        ?.models?.includes(rest);
+      if (!known) {
+        level = tail;
+        rest = rest.slice(0, colon);
+      }
+    }
+  }
+  return { provider, model: rest, level, weight: "" };
+}
+
+function serializeMember(member: MemberRow): string {
+  const provider = member.provider.trim();
+  const model = member.model.trim();
+  if (!provider || !model) return "";
+  const base = `${provider}/${model}`;
+  return member.level ? `${base}:${member.level}` : base;
+}
+
+function splitClassifier(value: string): { provider: string; model: string } {
+  const trimmed = value.trim();
+  const slash = trimmed.indexOf("/");
+  if (slash <= 0) return { provider: "", model: trimmed };
+  return { provider: trimmed.slice(0, slash), model: trimmed.slice(slash + 1) };
+}
+
 const emptyDraft = (): Draft => ({
   id: "",
   name: "",
-  routes: "",
+  members: [blankMember()],
   routing: "order",
   pick: "",
-  weights: "",
   affinity: "auto",
   firstToken: "0",
   patience: "",
@@ -112,21 +162,32 @@ const emptyDraft = (): Draft => ({
   rules: [],
 });
 
-const draftFrom = (group: GroupConfig): Draft => ({
-  id: group.id,
-  name: group.name || "",
-  routes: (group.routes ?? []).join("\n"),
-  routing: group.routing || "order",
-  pick: group.pick || "",
-  weights: (group.weights ?? []).join("\n"),
-  affinity: group.affinity || "auto",
-  firstToken: String(group.first_token_timeout_ms ?? 0),
-  patience: group.patience_s == null ? "" : String(group.patience_s),
-  classifier: group.classifier || "",
-  effort: group.effort || "",
-  levels: (group.levels ?? []).join(", "),
-  rules: JSON.parse(JSON.stringify(group.rules ?? [])) as RoutingRule[],
-});
+const draftFrom = (group: GroupConfig, providers: ProviderConfig[] = []): Draft => {
+  const routes = group.routes ?? [];
+  const weights = group.weights ?? [];
+  const members = routes.map((route, i) => {
+    const parsed = splitMemberRoute(route, providers);
+    const weight = weights[i];
+    return {
+      ...parsed,
+      weight: weight == null ? "" : String(weight),
+    };
+  });
+  return {
+    id: group.id,
+    name: group.name || "",
+    members: members.length ? members : [blankMember()],
+    routing: group.routing || "order",
+    pick: group.pick || "",
+    affinity: group.affinity || "auto",
+    firstToken: String(group.first_token_timeout_ms ?? 0),
+    patience: group.patience_s == null ? "" : String(group.patience_s),
+    classifier: group.classifier || "",
+    effort: group.effort || "",
+    levels: (group.levels ?? []).join(", "),
+    rules: JSON.parse(JSON.stringify(group.rules ?? [])) as RoutingRule[],
+  };
+};
 
 const emptyRule = (): RuleDraft => ({
   use: "",
@@ -329,7 +390,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
 
   function openEditor(group?: GroupConfig) {
     if (busy) return;
-    setEditing({ id: group?.id ?? null, draft: group ? draftFrom(group) : emptyDraft() });
+    setEditing({ id: group?.id ?? null, draft: group ? draftFrom(group, providers) : emptyDraft() });
     setRuleEditing(null);
     setRuleError("");
     setMessage("");
@@ -346,13 +407,64 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     setEditing((prev) => (prev ? { ...prev, draft: { ...prev.draft, ...patch } } : prev));
   }
 
+  function patchMember(index: number, patch: Partial<MemberRow>) {
+    setEditing((prev) => {
+      if (!prev) return prev;
+      const members = prev.draft.members.map((m, i) => (i === index ? { ...m, ...patch } : m));
+      return { ...prev, draft: { ...prev.draft, members } };
+    });
+  }
+
+  function addMember() {
+    setEditing((prev) => {
+      if (!prev) return prev;
+      const last = prev.draft.members[prev.draft.members.length - 1];
+      const next = last && !last.provider && providers.length
+        ? { ...blankMember(), provider: providers[0].id }
+        : blankMember();
+      // Keep the chosen model when adding another supplier for it: copy
+      // the last row's model so the same model on a new provider is one click.
+      if (last?.model && !next.model) next.model = last.model;
+      return { ...prev, draft: { ...prev.draft, members: [...prev.draft.members, next] } };
+    });
+  }
+
+  function removeMember(index: number) {
+    setEditing((prev) => {
+      if (!prev) return prev;
+      if (prev.draft.members.length <= 1) {
+        return { ...prev, draft: { ...prev.draft, members: [blankMember()] } };
+      }
+      return { ...prev, draft: { ...prev.draft, members: prev.draft.members.filter((_, i) => i !== index) } };
+    });
+  }
+
+  function moveMember(index: number, delta: -1 | 1) {
+    setEditing((prev) => {
+      if (!prev) return prev;
+      const next = [...prev.draft.members];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...prev, draft: { ...prev.draft, members: next } };
+    });
+  }
+
   async function saveGroup(e: React.FormEvent) {
     e.preventDefault();
     if (busy || !editing) return;
     const draft = editing.draft;
-    const routes = lines(draft.routes);
+    const routes = draft.members.map(serializeMember).filter(Boolean);
     if (!routes.length) {
       setMessage(t("groups.errNoRoutes"));
+      return;
+    }
+    const incomplete = draft.members.some((m) => {
+      const hasAny = m.provider.trim() || m.model.trim();
+      return hasAny && !serializeMember(m);
+    });
+    if (incomplete) {
+      setMessage(t("groups.errIncomplete"));
       return;
     }
     const stale = draft.rules.find((rule) => !rule.use || !routes.includes(rule.use));
@@ -415,7 +527,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       name: draft.name.trim(),
       routes,
       routing: draft.routing,
-      weights: [],
+      weights: routes.map(() => 1),
       affinity: draft.affinity,
       first_token_timeout_ms: firstToken,
       patience_s: patience,
@@ -426,13 +538,9 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       pick: draft.pick.trim(),
     };
     if (draft.routing === "weight") {
-      const weights = lines(draft.weights).map(Number);
+      const weights = draft.members.map((m) => (m.weight.trim() === "" ? 1 : Number(m.weight)));
       if (weights.some((weight) => !Number.isSafeInteger(weight) || weight < 0 || weight > 1000)) {
         setMessage(t("groups.errWeights"));
-        return;
-      }
-      if (weights.length > routes.length) {
-        setMessage(t("groups.errTooManyWeights"));
         return;
       }
       body.weights = weights;
@@ -546,7 +654,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
 
   const ruleUses = useMemo(() => {
     if (!editing) return [];
-    const routes = lines(editing.draft.routes);
+    const routes = editing.draft.members.map(serializeMember).filter(Boolean);
     const extra = editing.draft.rules
       .map((rule) => rule.use)
       .filter((use) => use && !routes.includes(use));
@@ -554,6 +662,26 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   }, [editing]);
 
   const draft = editing?.draft;
+
+  const classifierParts = useMemo(
+    () => splitClassifier(draft?.classifier ?? ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft?.classifier, editing?.id],
+  );
+  const memberRoutes = useMemo(
+    () => (draft ? draft.members.map(serializeMember) : []),
+    [draft],
+  );
+  const allModelOptions = useMemo(() => {
+    const seen = new Map<string, { provider: string; model: string }>();
+    for (const p of providers) {
+      for (const m of p.models ?? []) {
+        const key = `${p.id}/${m}`;
+        if (!seen.has(key)) seen.set(key, { provider: p.id, model: m });
+      }
+    }
+    return [...seen.values()];
+  }, [providers]);
 
   const patchRule = (patch: Partial<RuleDraft>) =>
     setRuleEditing((prev) => (prev ? { ...prev, draft: { ...prev.draft, ...patch } } : prev));
@@ -592,12 +720,124 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
             </FormSection>
 
             <FormSection title={t("groups.secMembers")} description={t("groups.secMembersDesc")}>
-              <Field label={t("groups.fRoutes")} htmlFor="group-routes"
-                help={t("groups.fRoutesHelp")}>
-                <textarea id="group-routes" className="input mono" rows={4} required
-                  placeholder={"deepseek/deepseek-chat\nkimi/moonshot-v1-128k"}
-                  value={draft.routes} onChange={(e) => patchDraft({ routes: e.target.value })} />
-              </Field>
+              <div className="member-list" role="list" aria-label={t("groups.fRoutes")}>
+                {draft.members.map((member, index) => {
+                  const options = providers.find((p) => p.id === member.provider)?.models ?? [];
+                  const listId = `group-member-model-${editing.id ?? "new"}-${index}`;
+                  return (
+                    <div className="member-row-edit" role="listitem" key={index}>
+                      <span className="step">{index + 1}</span>
+                      <label className="member-field">
+                        <span>{t("groups.memberProvider")}</span>
+                        <select
+                          className="input mono"
+                          value={member.provider}
+                          aria-label={t("groups.memberProvider")}
+                          onChange={(e) => patchMember(index, { provider: e.target.value })}
+                        >
+                          <option value=""></option>
+                          {providers.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name ? `${p.id} · ${p.name}` : p.id}
+                            </option>
+                          ))}
+                          {member.provider && !providers.some((p) => p.id === member.provider) ? (
+                            <option value={member.provider}>{member.provider}</option>
+                          ) : null}
+                        </select>
+                      </label>
+                      <label className="member-field grow">
+                        <span>{t("groups.memberModel")}</span>
+                        <input
+                          className="input mono"
+                          list={listId}
+                          placeholder="deepseek-chat"
+                          spellCheck={false}
+                          value={member.model}
+                          aria-label={t("groups.memberModel")}
+                          onChange={(e) => patchMember(index, { model: e.target.value })}
+                        />
+                        <datalist id={listId}>
+                          {options.map((m) => (
+                            <option key={m} value={m} />
+                          ))}
+                        </datalist>
+                      </label>
+                      <label className="member-field small">
+                        <span>{t("groups.memberLevel")}</span>
+                        <select
+                          className="input"
+                          value={member.level}
+                          aria-label={t("groups.memberLevel")}
+                          onChange={(e) => patchMember(index, { level: e.target.value })}
+                        >
+                          <option value="">{t("groups.memberLevelAny")}</option>
+                          {LEVELS.map((level) => (
+                            <option key={level} value={level}>{level}</option>
+                          ))}
+                        </select>
+                      </label>
+                      {draft.routing === "weight" ? (
+                        <label className="member-field tiny">
+                          <span>{t("groups.memberWeight")}</span>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            max="1000"
+                            step="1"
+                            placeholder="1"
+                            value={member.weight}
+                            aria-label={t("groups.memberWeight")}
+                            onChange={(e) => patchMember(index, { weight: e.target.value })}
+                          />
+                        </label>
+                      ) : null}
+                      <span className="member-id mono" title={serializeMember(member) || "provider/model"}>
+                        {serializeMember(member) || <span className="text-muted">provider/model</span>}
+                      </span>
+                      <span className="member-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          disabled={index === 0}
+                          title={t("groups.memberUp")}
+                          aria-label={t("groups.memberUp")}
+                          onClick={() => moveMember(index, -1)}
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          disabled={index === draft.members.length - 1}
+                          title={t("groups.memberDown")}
+                          aria-label={t("groups.memberDown")}
+                          onClick={() => moveMember(index, 1)}
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          title={t("groups.memberRemove")}
+                          aria-label={t("groups.memberRemove")}
+                          onClick={() => removeMember(index)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="member-foot">
+                <button type="button" className="btn dashed sm" onClick={addMember}>
+                  <Plus size={14} aria-hidden="true" />
+                  {t("groups.memberAdd")}
+                </button>
+                <span className="help">{t("groups.fRoutesHelp")}</span>
+              </div>
             </FormSection>
 
             <FormSection title={t("groups.secPolicy")}>
@@ -625,15 +865,19 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
                 </Field>
                 <Field label={t("groups.fPick")} htmlFor="group-pick" hidden={draft.routing !== "manual"}
                   help={t("groups.fPickHelp")}>
-                  <input id="group-pick" className="input mono" list="agent-model-options"
-                    placeholder="deepseek/deepseek-chat" spellCheck={false}
-                    value={draft.pick} onChange={(e) => patchDraft({ pick: e.target.value })} />
+                  <select id="group-pick" className="input mono"
+                    value={memberRoutes.includes(draft.pick.trim()) ? draft.pick.trim() : ""}
+                    onChange={(e) => patchDraft({ pick: e.target.value })}
+                  >
+                    <option value="">{t("groups.pickFirst")}</option>
+                    {memberRoutes.filter(Boolean).map((route) => (
+                      <option key={route} value={route}>{route}</option>
+                    ))}
+                  </select>
                 </Field>
-                <Field label={t("groups.fWeights")} htmlFor="group-weights" hidden={draft.routing !== "weight"}
-                  help={t("groups.fWeightsHelp")}>
-                  <textarea id="group-weights" className="input mono" rows={3} placeholder={"3\n1\n4"}
-                    value={draft.weights} onChange={(e) => patchDraft({ weights: e.target.value })} />
-                </Field>
+                {draft.routing === "weight" ? (
+                  <p className="help span-all">{t("groups.fWeightsHelp")}</p>
+                ) : null}
               </div>
             </FormSection>
 
@@ -658,9 +902,48 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
               <div className="form-grid three">
                 <Field label={t("groups.fClassifier")} htmlFor="group-classifier"
                   help={t("groups.fClassifierHelp")}>
-                  <input id="group-classifier" className="input mono" list="agent-model-options"
-                    placeholder="deepseek/deepseek-chat" spellCheck={false}
-                    value={draft.classifier} onChange={(e) => patchDraft({ classifier: e.target.value })} />
+                  <div className="classifier-pick">
+                    <select
+                      className="input mono"
+                      aria-label={t("groups.memberProvider")}
+                      value={classifierParts.provider}
+                      onChange={(e) => {
+                        const next = e.target.value ? `${e.target.value}/${classifierParts.model}`.replace(/\/$/, "") : classifierParts.model;
+                        patchDraft({ classifier: e.target.value && classifierParts.model ? `${e.target.value}/${classifierParts.model}` : next });
+                      }}
+                    >
+                      <option value=""></option>
+                      {providers.map((p) => (
+                        <option key={p.id} value={p.id}>{p.id}</option>
+                      ))}
+                      {classifierParts.provider && !providers.some((p) => p.id === classifierParts.provider) ? (
+                        <option value={classifierParts.provider}>{classifierParts.provider}</option>
+                      ) : null}
+                    </select>
+                    <input
+                      id="group-classifier"
+                      className="input mono"
+                      list="group-classifier-models"
+                      placeholder="deepseek-chat"
+                      spellCheck={false}
+                      aria-label={t("groups.memberModel")}
+                      value={classifierParts.model}
+                      onChange={(e) => {
+                        const model = e.target.value;
+                        patchDraft({ classifier: classifierParts.provider && model ? `${classifierParts.provider}/${model}` : model });
+                      }}
+                    />
+                    <datalist id="group-classifier-models">
+                      {allModelOptions
+                        .filter((o) => !classifierParts.provider || o.provider === classifierParts.provider)
+                        .map((o) => (
+                          <option key={`${o.provider}/${o.model}`} value={o.model}>
+                            {`${o.provider}/${o.model}`}
+                          </option>
+                        ))}
+                    </datalist>
+                  </div>
+                  <p className="mono-preview">{draft.classifier.trim() || <span className="text-muted">provider/model</span>}</p>
                 </Field>
                 <Field label={t("groups.fEffort")} htmlFor="group-effort"
                   help={t("groups.fEffortHelp")}>
