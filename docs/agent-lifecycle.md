@@ -1,9 +1,9 @@
 # Agent lifecycle
 
-The shared `magpie-agents` crate owns all seven adapters. Both CLI and authenticated
-HTTP management run its preview, revision check, journal, apply and recovery flow;
-there is no separate CLI implementation. The protected console uses the same HTTP
-operations. None of these operations run agent binaries.
+The shared `magpie-agents` crate owns all seven adapters. Agent lifecycle
+management is CLI-only; the gateway exposes no Agent management endpoints and
+the web console does not inspect or modify Agent files. None of these operations
+run Agent binaries.
 
 ## CLI
 
@@ -28,14 +28,13 @@ agent shorthand commands use this same journaled connect flow. `ls` includes
 managed connection, drift and recovery state. Disconnect and recover do not
 require a readable gateway TOML file or a running server.
 
-The CLI uses the configured port. If the running server uses `serve --port` to
-override it, use HTTP management on that server to connect: HTTP operations use
-the actual listening port (including an OS-assigned port requested with `0`).
+Agent wiring uses the configured gateway port and can be performed while the
+gateway is stopped.
 
 ## Passive Agent detection
 
-All seven adapters share `crates/agents/src/discovery.rs`. `agent list`, `ls`,
-HTTP statuses and the console distinguish three independent observations:
+All seven adapters share `crates/agents/src/discovery.rs`. `agent list` and `ls`
+distinguish three independent observations:
 
 - `detection.config_file`: a managed configuration file exists;
 - `detection.config_directory`: a managed file's parent directory exists;
@@ -101,66 +100,14 @@ not proof that an Agent is uninstalled. Discovery does not verify a launcher
 format, version, current process, health, permissions to launch as the current
 user, a new terminal's PATH, project overrides or which model that Agent will
 actually select. No login shell, registry or credential store is queried.
-Launcher-only changes do not alter managed-field ownership, drift or backend
-preview revisions. The console may still clear a preview when refreshed metadata
-changes, so the displayed information is reviewed again.
-
-## HTTP
-
-All endpoints require the gateway token, exactly like `/config` and inference.
-No endpoint accepts arbitrary configuration paths or reads backup contents back
-to the caller.
-
-| Method | Endpoint | Body / response |
-|---|---|---|
-| GET | `/agents` | `{"agents":[...]}`: detection, connection/model, drift, pending recovery, managed paths and restart notice |
-| POST | `/agents/{id}/preview` | `{"action":"connect","model":"provider/model"}` or `{"action":"disconnect"}`; returns revision and file create/update/delete/unchanged plus before/after byte counts |
-| POST | `/agents/{id}/apply` | Same action/model plus `"revision":"<64-hex-preview-revision>"`; returns resulting status |
-| POST | `/agents/{id}/recover` | No body required; rolls back a pending connect or finishes a pending disconnect |
-
-Preview runs the actual adapter against private staged copies. It does **not**
-change the agent's real files, but creates/uses local state, locking and temporary
-staging files. Apply recalculates the preview while holding the shared operation
-lock. A changed file, selected path, model, gateway endpoint/token or journal
-invalidates its revision. Inputs return sanitized 400 errors, unknown IDs 404,
-stale revisions/drift/lock contention 409, and inaccessible state 503.
-
-## Console workflow
-
-Open the local gateway console and enter its token. **Coding agents** displays
-all seven supported adapters, including Agents not detected locally. Detection
-is a local config/PATH hint, not proof that an Agent is running or reachable.
-
-1. Click **Manage**. The editor lists managed paths and Agent-specific restart/
-   override instructions. Zed also shows its manual credential requirement.
-2. Choose **Connect / change model** and use the model-route suggestions, or
-   manually enter `provider/model` or `group/id`. Unknown providers/groups are
-   rejected; a configured provider may accept an unlisted model.
-3. Click **Preview changes**, review create/update/delete/unchanged operations
-   and byte counts, and click **Confirm connection**. Preview contains no file
-   contents. There is no automatic apply or retry.
-4. Choose **Disconnect / restore managed settings**, then preview and confirm restoration.
-   A drift warning does not blindly disable this action: an OpenCode overriding
-   path can coexist with safe restoration of the originally managed file.
-5. An interrupted operation disables connect/disconnect and shows **Recover
-   interrupted operation**. Its confirmation explains rollback versus finishing
-   restoration; the backend checks the journal and current files before writing.
-
-Form edits, changed Agent status/routing metadata, route mutations, closing the
-editor and sign-out invalidate previews. Backend revision checks are still the
-final authority for changes invisible to the UI (credentials, files or port).
-Provider/group/Agent operations share one UI busy gate; late responses from an
-old refresh/session cannot republish data. Escape closes an idle editor and
-returns focus to its Agent button. Failed operations retain the route input and
-require a new preview; failed status reads disable Agent actions while leaving
-provider/statistics panels usable. Requests have a 30-second browser deadline;
-if a write times out, refresh status rather than assuming it was rolled back.
+Launcher-only changes do not alter managed-field ownership, drift or preview
+revisions. Preview, apply and recovery are available through the CLI commands
+listed above; there is no HTTP or console workflow.
 
 ## Backup and recovery
 
 Each configuration directory contains an `agent-state` directory beside the
-TOML file. CLI and gateway processes use the same OS operation lock and journals
-there. A journal preserves the bytes before the **first** connect; rewiring does
+TOML file. CLI operations use an OS operation lock and journals there. A journal preserves the bytes before the **first** connect; rewiring does
 not replace that original baseline. Each adapter declares the fields it owns.
 Disconnect restores those fields while preserving later additions, modifications
 and deletions of unrelated fields, including edits adopted by a rewire. Model
@@ -259,7 +206,6 @@ do not delete backups to dismiss an error.
 
 ```powershell
 cargo test -p magpie-agents
-cargo test -p magpie-gateway --test agents
 cargo test -p magpie-lite --test agent_lifecycle
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
@@ -269,63 +215,23 @@ cargo fmt --all -- --check
 Tests use `Manager::at_home` with explicit temporary directories, or child CLI
 processes with `MAGPIE_LITE_HOME` pointing to a temporary home. They never mutate
 process-wide home variables or target the user's actual agent configuration.
-The HTTP and child-CLI suites exercise seven-Agent unrelated edits, stale
-revisions, rewires and immediate selective disconnects. Child CLI tests also
-remove the gateway TOML before disconnect/recovery. Multi-file recovery fixtures
-simulate a partly completed Gemini disconnect using images from a real rewire;
-HTTP additionally refuses edits made after the pending journal without partial
-writes. These fixtures validate journal recovery, not actual crash injection.
-
-### Reproducible browser checks
-
-```powershell
-cargo build -p magpie-lite
-# If Playwright is not resolvable through Node's module path:
-$env:PLAYWRIGHT_MODULE = '<absolute Playwright module directory>'
-# Optional: use an already installed Chromium browser.
-$env:PLAYWRIGHT_EXECUTABLE_PATH = '<absolute Chromium/Edge executable>'
-node --test tests/browser/agents.cjs
-```
-
-`MAGPIE_LITE_BIN` optionally overrides the debug gateway binary;
-`MAGPIE_LITE_SCREENSHOTS` optionally saves desktop and 390px editor screenshots
-outside the disposable sandbox. No frontend runtime dependency is added to the
-Rust distribution; Playwright is only needed to run this browser suite.
-
-The suite exercises actual HTTP preview/apply endpoints for every adapter:
-original-byte restoration, missing-file creation/removal, rewiring via a group,
-seven-Agent preservation of unrelated additions/changes/deletions, stale
-revisions even after unrelated edits, refused managed-field drift, ambiguous
-JSON/JSONC refusal and OpenCode overriding paths. It also checks model
-suggestions, form/preview invalidation, provider/group CRUD and delete-reference
-protection, busy coordination in both directions, errors, session expiry, late
-old-session responses, Escape/focus, secret-free rendered text/forms, 44px
-controls and 390px page overflow.
-
 JSON/JSONC editor unit tests cover nested edits, removals, shape changes, escaped
 keys/strings, repeated comments, strict-vs-JSONC syntax, numbers, depth, BOM and
 CRLF. All JSON adapter files are checked for foreign-byte preservation through
-wiring and restoration. HTTP, child CLI and console browser tests exercise
-selected OpenCode JSONC preview/connect/rewire/selective restoration and refusal.
+wiring and restoration. Child-CLI tests exercise preview/connect/rewire/selective
+restoration and refusal for OpenCode JSONC.
 
 Recovery uses a **synthetic pending-disconnect journal** in the temporary state
 directory with a merged restoration image retaining unrelated edits, not a real
-process crash. Agent-status failure, authentication expiry
-and provider-tool busy coordination use explicit browser response fixtures;
-the timeout check accelerates one browser timer. These are UI coordination
-checks, not live vendor or real Agent execution evidence. Screenshots were
-captured on Windows/Edge; layout/focus were measured automatically. Manual visual
-inspection was unavailable on this development host, and is not claimed.
+process crash. These filesystem fixtures do not prove compatibility with real
+installed Agent versions.
 
 Passive discovery tests use temporary launchers for all seven Agents. Unit tests
 exercise PATH priority, prefix/environment snapshots without global env mutation,
 sandbox isolation, numeric Node-version ordering, bounded/unknown results and
 refresh/removal. A lifecycle regression confirms that adding a launcher between
-preview and apply does not change revisions or ownership. HTTP and child CLI
-fixtures verify authenticated/secret-free metadata, unchanged configs/statistics
-and marker scripts that are never executed. The real-gateway browser suite checks
-all seven CLI paths; an explicitly injected metadata response additionally checks
-text-only rendering, unknown-membership warnings and long-path wrapping at 390px.
+preview and apply does not change revisions or ownership. CLI fixtures verify
+metadata remains local and marker scripts are never executed.
 Unix permission/symlink branches have also been executed under WSL/Arch Linux.
 Lifecycle regressions cover all seven adapters, exact and selective permission
 restoration, legacy schema-1/2 stat modes, missing files, and partial publication

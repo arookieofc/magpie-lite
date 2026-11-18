@@ -5,7 +5,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-magpie-agents = { path = "../agents" }
 magpie-core = { path = "../core" }
 magpie-router = { path = "../router" }
 magpie-store = { path = "../store" }

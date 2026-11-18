@@ -155,7 +155,7 @@ impl Drop for Server {
     }
 }
 #[tokio::test]
-async fn gateway_uses_actual_port_and_shares_cli_journals() {
+async fn gateway_uses_actual_port_and_exposes_no_agent_routes() {
     use std::io::BufRead;
     let s = Sandbox::new();
     let mut server = Server(
@@ -188,42 +188,14 @@ async fn gateway_uses_actual_port_and_shares_cli_journals() {
     assert_ne!(port, 0);
     assert_ne!(port, 45554);
     let client = magpie_gateway::upstream::http_client().unwrap();
-    let p: Value = client
+    let response = client
         .post(format!("{url}/agents/claude/preview"))
         .bearer_auth(TOKEN)
         .json(&json!({"action":"connect","model":"mock/model"}))
         .send()
         .await
-        .unwrap()
-        .json()
-        .await
         .unwrap();
-    let response = client
-        .post(format!("{url}/agents/claude/apply"))
-        .bearer_auth(TOKEN)
-        .json(&json!({"action":"connect","model":"mock/model","revision":p["revision"]}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
-    let settings: Value = serde_json::from_slice(
-        &std::fs::read(s.root.path().join("home/.claude/settings.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(settings["env"]["ANTHROPIC_BASE_URL"], url);
-    let list = s.success(&["agent", "list"]);
-    assert_eq!(list[0]["connected"], true);
-    s.success(&["agent", "disconnect", "claude"]);
-    let statuses: Value = client
-        .get(format!("{url}/agents"))
-        .bearer_auth(TOKEN)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(statuses["agents"][0]["connected"], false);
+    assert_eq!(response.status(), 404);
 }
 
 #[cfg(windows)]

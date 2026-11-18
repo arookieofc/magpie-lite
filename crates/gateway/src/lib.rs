@@ -1,6 +1,5 @@
 //! magpie-gateway: the local server agents talk to.
 
-pub mod agents;
 pub mod config_store;
 pub mod icons;
 pub mod provider_tools;
@@ -11,7 +10,7 @@ pub mod upstream;
 pub mod usage;
 
 pub use config_store::ConfigStore;
-pub use server::{AppState, build_router, serve, serve_on_listener, serve_with_config_path};
+pub use server::{AppState, build_router, serve, serve_with_config_path};
 
 // The routing core now lives in magpie-router; re-export what the CLI and
 // downstream users need so `magpie_gateway::Config` etc. still work.

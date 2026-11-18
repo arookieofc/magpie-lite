@@ -1,11 +1,12 @@
 {
-  "name": "magpie-app-ui",
+  "name": "magpie-lite-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite ui",
-    "build": "tsc -b ui && vite build ui"
+    "dev": "vite ui --host 127.0.0.1",
+    "build": "tsc -b ui && vite build ui",
+    "preview": "vite preview ui --host 127.0.0.1"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

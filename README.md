@@ -28,7 +28,7 @@ Zed ─────────┘   Chat + Responses +
 - **Conversation affinity**: keep a conversation on the provider key slot that answered it so the vendor's prompt cache can keep hitting. `auto` follows the routing policy (`rotate` starts new turns elsewhere; other policies stick), `session` keeps every turn, `turn` keeps only while tool results are coming back, and `off` disables it. The decision is per provider key slot, persisted in `affinity.json` beside the config, and is not account/subscription affinity; see the CLI `--affinity` option and console selectors.
 - **Failover**: ordered provider fallbacks and routing-group routes, tried before any reply bytes are streamed when the active provider is rate limited, out of quota, overloaded, or unreachable
 - **Local authentication**: every non-health route requires the configured token as Bearer, Anthropic `x-api-key`, or Gemini `x-goog-api-key`; `/health` stays public
-- **Web console**: open `http://127.0.0.1:3426/`, enter the local token, and manage Agent connections, providers and routing groups, discover upstream models, test draft connections, or inspect provider totals, routing providers and groups, key-slot totals and active cooldowns, available models, recent requests, and recent usage; prompts, replies, and saved keys are never returned to the page or persisted in request history
+- **Separate web frontend**: run the React console independently from the Rust gateway (`cd crates/app && npm install && npm run dev`); Vite proxies API calls to `http://127.0.0.1:3426` by default, and a production build is written to `crates/app/ui/dist` for static hosting. The browser supplies the configured gateway token; the gateway serves APIs only and no longer embeds a UI.
 - **Request statistics**: token-protected `/stats`, `/config`, and `magpie-lite stats` show provider and per-key totals, token usage, statuses, latency, active secret-free key cooldowns, and recent request metadata (including which key slot served it, never the key); `recent_usage` adds provider/model aggregates over the recent window; `/stats?from=<unix-ms>&to=<unix-ms>` can filter that recent portion (`from` inclusive, `to` exclusive), and the protected web console exposes the same local-time range controls with validation, clear, and auto-refresh preservation; optional sanitized JSONL history keeps the window across restarts while process totals stay process-local
 - **Agent wiring**: `magpie-lite claude <model>` (settings.json env block), `magpie-lite codex <model>` (config.toml provider table, native `wire_api = "responses"`), `magpie-lite crush <model>` (custom OpenAI-compatible provider and large-model pick), `magpie-lite gemini <model>` (`~/.gemini/settings.json` plus `.env`), `magpie-lite goose <model>` (custom OpenAI-compatible provider plus the active model), `magpie-lite opencode <model>` (`~/.config/opencode/opencode.json` provider block), `magpie-lite zed <model>` (OpenAI-compatible provider in Zed settings; the token goes in Zed provider settings or `MAGPIE_LITE_API_KEY`, not `settings.json`)
 - **Conformance tests** for every translation direction, and end-to-end tests over real HTTP with mock Chat and Gemini upstreams
@@ -74,8 +74,9 @@ magpie-lite group add daily-coding \
 
 # run the gateway
 magpie-lite serve
-# open the console (models and statistics still require the local token)
-# http://127.0.0.1:3426/
+# in another terminal, launch the separate web frontend
+cd crates/app && npm install && npm run dev
+# open http://127.0.0.1:5173/ and enter the configured gateway token
 
 # agents use the configured token (default: magpie-lite) as their local API key
 
@@ -97,7 +98,7 @@ magpie-lite serve --history-file 'D:\magpie\history.jsonl'
 # without either, recent history lives in magpie.db beside the config
 ```
 
-Restart the agent after wiring it. For Zed, also set MAGPIE_LITE_API_KEY to the gateway token in Zed's environment, or enter that token in Zed's AI provider settings. Disconnect through the console or `magpie-lite agent disconnect <id>` to restore the saved original configuration, provided no conflicting edits were made.
+Restart the agent after wiring it. For Zed, also set MAGPIE_LITE_API_KEY to the gateway token in Zed's environment, or enter that token in Zed's AI provider settings. Disconnect with `magpie-lite agent disconnect <id>` to restore the saved original configuration, provided no conflicting edits were made.
 
 ## Streaming timeouts
 
@@ -257,12 +258,11 @@ IDs permit ASCII letters, digits, hyphens and underscores; `group` is reserved. 
 
 GET `/config` and successful provider/group edits return a numeric `revision` and a quoted `ETag` (for example, `"2"`). Send that ETag as `If-Match` on POST/PUT/DELETE to reject stale writes with 409 without changing memory or disk. Bare numeric revisions are also accepted; malformed values return 400. Omitting the header or using `*` keeps legacy unconditional updates. The console sends its latest loaded revision. Revisions are persisted in the atomically replaced TOML document under the reserved `__magpie_lite.revision` table, so a gateway restart cannot reset the concurrency token. Legacy files without metadata start at revision 1. Gateway writes also take a bounded lock at `<config-path>.lock`; a lock held by another gateway returns 409.
 
-Provider and group create/update/delete also accept an optional `Idempotency-Key` header (up to 200 bytes). For the same scope, key, and token-keyed HMAC-SHA256 request digest, the gateway replays the original secret-free snapshot without incrementing the revision; reusing a key with a different request returns 409. Entries are stored in `<config-path>.idempotency.json`, retaining the most recent 256 committed operations. The ledger never stores the token, provider credentials, or raw request body. A pending entry left by a crash fails closed with 409 rather than risking a duplicate write. Agent `POST /agents/{id}/apply` accepts the same optional header and stores its secret-free status in `<agent-state-dir>/agent-idempotency.json`; a committed retry replays the status, a digest mismatch returns 409, and a crash left pending entry fails closed. Agent apply still requires a fresh preview revision, and the agent ledger never stores the gateway token, provider credentials, or raw request body. Successful edits return the secret-free `/config` snapshot. Invalid provider IDs, protocols, URLs, models, keys, and fallback routes return 400. Duplicate providers return 409; missing providers return 404. Changes are persisted through the same atomic config update used by routing groups.
+Provider and group create/update/delete also accept an optional `Idempotency-Key` header (up to 200 bytes). For the same scope, key, and token-keyed HMAC-SHA256 request digest, the gateway replays the original secret-free snapshot without incrementing the revision; reusing a key with a different request returns 409. Entries are stored in `<config-path>.idempotency.json`, retaining the most recent 256 committed operations. The ledger never stores the token, provider credentials, or raw request body. A pending entry left by a crash fails closed with 409 rather than risking a duplicate write. Successful edits return the secret-free `/config` snapshot. Invalid provider IDs, protocols, URLs, models, keys, and fallback routes return 400. Duplicate providers return 409; missing providers return 404. Changes are persisted through the same atomic config update used by routing groups.
 
 ## Agent connection, restore and recovery
 
-The CLI and protected HTTP API now share seven adapters through the
-`magpie-agents` crate. Use `agent preview <id> <model>`,
+The CLI uses seven adapters through the `magpie-agents` crate. Use `agent preview <id> <model>`,
 `agent connect <id> <model>`, `agent preview <id> --disconnect`,
 `agent disconnect <id>` and `agent recover <id>`. `agent list` reports managed
 connection, drift, pending recovery and passive detection details. `ls` includes
@@ -270,28 +270,15 @@ configuration markers, the discovered CLI path and whether it is on the launcher
 captured PATH (or unknown when the search is limited). Existing per-agent shorthand
 commands also save a durable backup before writing.
 
-The **Coding agents** panel shows detection, connection, selected model, drift
-and recovery status for all seven agents. It also separates configuration markers
-from CLI discovery and warns about launchers outside the gateway's PATH. Detection
-never runs a launcher and is not a terminal-PATH, version or health check.
-Click **Manage**, choose a configured
-route (or type `provider/model` / `group/id`), and **Preview changes**. Review the
-paths, operations and byte counts, then **Confirm connection**. To disconnect,
-choose **Disconnect / restore backup**, preview and **Confirm restoration**.
-Interrupted operations expose a separate, explicitly confirmed recovery action.
-Model/action edits, changed state/routes and sign-out clear reviewed previews.
-A status-read failure disables Agent actions without breaking the other panels.
-
-HTTP management exposes `GET /agents` and
-`POST /agents/{id}/preview|apply|recover`. Apply requires the reviewed preview
-revision. Previews show paths, operations and byte counts, not secrets.
+Agent connection management is CLI-only. The web console does not inspect or
+modify Agent configuration files.
 
 Unchanged managed files can be restored byte-for-byte; unrelated later edits are
 preserved by selective field restoration. Managed-field conflicts and unsafe
 configuration shapes are refused rather than overwritten. Multi-file operations have explicit journaled
 recovery, not an atomic all-file transaction. Journals retain sensitive baseline
 credentials and are **not encrypted**. See `docs/agent-lifecycle.md` for commands,
-API bodies, port overrides, backup retention, platform permissions and precise limitations.
+backup retention, platform permissions and precise limitations.
 
 ## Discovering models and testing providers
 
@@ -411,8 +398,8 @@ file path receive 503 for editing; use `serve_with_config_path` to enable it.
 |---|---|
 | `crates/core` | The IR and the wire codecs (chat, responses, anthropic, gemini), streaming included |
 | `crates/gateway` | The axum server, model routing, upstream clients, SSE translation |
-| `crates/agents` | Shared agent adapters, private preview, revision checks, journals and restoration/recovery |
-| `crates/cli` | The `magpie-lite` binary using the same backend and agent lifecycle as HTTP management |
+| `crates/agents` | Shared Agent adapters, preview, revision checks, journals and restoration/recovery used by the CLI |
+| `crates/cli` | The `magpie-lite` binary, including Agent connection commands |
 
 ## Design
 
@@ -444,13 +431,5 @@ Agent configuration operations use reviewed revisions and durable backups, and r
 
 MIT, like magpie.
 
-### Browser verification
-
-After `cargo build -p magpie-lite`, run `node --test tests/browser/agents.cjs`
-with Node 18+ and Playwright available. Set `PLAYWRIGHT_MODULE` to an absolute
-Playwright module directory if it is not on Node's module path;
-`PLAYWRIGHT_EXECUTABLE_PATH` optionally selects an installed Chromium browser.
-The runner launches its own gateway on an ephemeral loopback port with
-`MAGPIE_LITE_HOME` set only in the child. It uses a temporary home and configuration,
-never the user's Agent files, and cleans up after stopping that child.
-See `docs/agent-lifecycle.md` for coverage and fixture limitations.
+The frontend no longer includes Agent lifecycle controls. CLI lifecycle behavior
+is tested with `cargo test -p magpie-cli --test agent_lifecycle`.

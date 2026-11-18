@@ -1,23 +1,28 @@
-# magpie-lite desktop app
+# Magpie Lite frontend
 
-The app starts the gateway on loopback and opens the React console in a Tauri
-window. The page talks to the gateway through the `gateway_request` command, so
-it never needs a second origin or a token.
+This is a standalone React + TypeScript frontend. It does not bundle or start
+the Rust gateway and does not use Tauri. The browser talks to the gateway HTTP
+API directly; development requests are proxied by Vite.
 
 ## Run locally
 
 ```sh
 cd crates/app
 npm install
+npm run dev
+# In another terminal, from the repository root:
+cargo run -p magpie-lite -- serve
+
+# Production static build:
 npm run build
-cargo run -p magpie-app
 ```
 
-`npm run build` writes `ui/dist`, which Tauri embeds at compile time. Re-run it
-after changing anything under `ui/src`.
+`npm run build` writes `ui/dist`. Host that directory as static files and
+configure the static host or reverse proxy to forward the API paths to the
+gateway. During development, set `MAGPIE_GATEWAY_URL` to override the default
+`http://127.0.0.1:3426` API target.
 
 ## Layout
 
-- `src/main.rs` — gateway startup, window creation, loopback request bridge
 - `ui/src` — React + TypeScript console
-- `ui/src/console.css` — styling shared with the gateway console
+- `ui/src/console.css` — frontend styles

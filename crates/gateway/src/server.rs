@@ -10,9 +10,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
+use axum::middleware::{self, Next};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use futures::StreamExt;
@@ -54,13 +55,11 @@ use crate::unfit_fields;
 use crate::upstream;
 use crate::usage::{RequestLog, RequestTracker};
 
-/// The dependency-free local console.
-const CONSOLE_HTML: &str = include_str!("console.html");
-
 /// Shared handler state.
 pub struct AppState {
-    /// Optional shared agent lifecycle manager and actual listening port.
-    pub agents: Option<crate::agents::AgentService>,
+    /// Retained for source compatibility with embedding clients; the gateway
+    /// no longer provides Agent lifecycle endpoints.
+    pub agents: Option<()>,
     /// The loaded configuration.
     pub config: ConfigStore,
     /// The pooled upstream client.
@@ -97,10 +96,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/version", get(ollama_version))
         .route("/api/tags", get(ollama_tags))
         .route("/api/show", post(ollama_show))
-        .route("/agents", get(crate::agents::list))
-        .route("/agents/{id}/preview", post(crate::agents::preview))
-        .route("/agents/{id}/apply", post(crate::agents::apply))
-        .route("/agents/{id}/recover", post(crate::agents::recover))
         .route("/stats", get(stats))
         .route("/api/trace", get(trace))
         .route("/config", get(config))
@@ -128,13 +123,40 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/config/found-groups", put(update_found_groups))
         .route("/config/vision", put(update_vision))
-        // The gateway only ever binds loopback, so no token gate: the
-        // console and the model routes are open to anything that can
-        // already reach the port.
         .route("/health", get(health))
-        .route("/", get(console))
-        .route("/ui", get(console))
+        .layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .with_state(state)
+}
+
+async fn authenticate(
+    State(state): State<Arc<AppState>>,
+    request: axum::http::Request<Body>,
+    next: Next,
+) -> Response {
+    if matches!(request.uri().path(), "/health") {
+        return next.run(request).await;
+    }
+
+    let supplied = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .or_else(|| request.headers().get("x-api-key").and_then(|value| value.to_str().ok()))
+        .or_else(|| request.headers().get("x-goog-api-key").and_then(|value| value.to_str().ok()));
+    let expected = state.config.current().token;
+    let authorized = supplied.is_some_and(|value| {
+        use subtle::ConstantTimeEq;
+        value.as_bytes().ct_eq(expected.as_bytes()).into()
+    });
+    if authorized {
+        next.run(request).await
+    } else {
+        err_response(
+            StatusCode::UNAUTHORIZED,
+            upstream::chat_error(StatusCode::UNAUTHORIZED, "missing or invalid gateway token"),
+        )
+    }
 }
 
 /// Run the gateway until the process is stopped.
@@ -171,7 +193,6 @@ pub async fn serve_with_config_path(
     let listener =
         tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], requested_port))).await?;
     let addr = listener.local_addr()?;
-    let port = addr.port();
     let http = upstream::http_client()?;
     let agent_config = match &config_path {
         Some(path) => path.clone(),
@@ -196,9 +217,11 @@ pub async fn serve_with_config_path(
         &config,
         shared_store.clone(),
     )?));
-    let agent_state_dir = magpie_agents::lifecycle::state_directory(&agent_config)?;
-    retired_store::init(agent_state_dir.join("retired.json"));
-    let manager = magpie_agents::lifecycle::Manager::native(agent_state_dir.clone())?;
+    let agent_state = agent_config
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("agent-state");
+    retired_store::init(agent_state.join("retired.json"));
     // Persist affinity beside the resolved config even when the embedded
     // caller supplied no path and the default config location is in use.
     let affinity = match shared_store {
@@ -206,11 +229,7 @@ pub async fn serve_with_config_path(
         None => AffinityStore::beside(Some(agent_config.as_path())),
     };
     let state = Arc::new(AppState {
-        agents: Some(crate::agents::AgentService {
-            manager: Arc::new(manager),
-            port,
-            state_dir: agent_state_dir,
-        }),
+        agents: None,
         config: ConfigStore::new(config, config_path),
         http,
         requests,
@@ -233,84 +252,6 @@ pub async fn serve_with_config_path(
         .await?;
     state.affinity.flush();
     Ok(())
-}
-
-/// Serve on an already-bound listener, reporting its address on the
-/// channel so an embedding app can open its window on the actual port
-/// (an ephemeral port, or one another magpie was not holding). Stops
-/// when the shutdown future resolves — a Tauri app's quit, in place of
-/// the standalone Ctrl-C.
-pub async fn serve_on_listener(
-    config: Config,
-    listener: tokio::net::TcpListener,
-    config_path: Option<std::path::PathBuf>,
-    history_path: Option<std::path::PathBuf>,
-    bound: tokio::sync::oneshot::Sender<std::net::SocketAddr>,
-    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
-) -> anyhow::Result<()> {
-    let addr = listener.local_addr()?;
-    let port = addr.port();
-    let http = upstream::http_client()?;
-    let agent_config = match &config_path {
-        Some(path) => path.clone(),
-        None => crate::config::config_path()?,
-    };
-    // One embedded database serves request history and conversation
-    // affinity together. A broken database never blocks startup: history
-    // runs memory-only and affinity falls back to its JSON file.
-    let db_path = magpie_store::default_db_path(&agent_config);
-    let shared_store = match magpie_store::Store::open(&db_path) {
-        Ok(store) => Some(std::sync::Arc::new(store)),
-        Err(error) => {
-            tracing::warn!(
-                "SQLite store {} unavailable ({error:#}); request history is memory-only for this run",
-                db_path.display()
-            );
-            None
-        }
-    };
-    let requests = Arc::new(Mutex::new(open_request_log(
-        history_path.as_ref(),
-        &config,
-        shared_store.clone(),
-    )?));
-    let agent_state_dir = magpie_agents::lifecycle::state_directory(&agent_config)?;
-    retired_store::init(agent_state_dir.join("retired.json"));
-    let manager = magpie_agents::lifecycle::Manager::native(agent_state_dir.clone())?;
-    // Persist affinity beside the resolved config even when the embedded
-    // caller supplied no path and the default config location is in use.
-    let affinity = match shared_store {
-        Some(store) => AffinityStore::open_db(store),
-        None => AffinityStore::beside(Some(agent_config.as_path())),
-    };
-    let state = Arc::new(AppState {
-        agents: Some(crate::agents::AgentService {
-            manager: Arc::new(manager),
-            port,
-            state_dir: agent_state_dir,
-        }),
-        config: ConfigStore::new(config, config_path),
-        http,
-        requests,
-        key_rotation: crate::config::KeyRotator::default(),
-        affinity,
-        lanes: lanes::Lanes::default(),
-        rpms: lanes::Rpms::default(),
-    });
-    let app = build_router(Arc::clone(&state));
-    let _ = bound.send(addr);
-    tracing::info!("magpie-lite gateway listening on http://{addr}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await?;
-    state.affinity.flush();
-    Ok(())
-}
-
-/// GET `/` and `/ui` — the static console shell. `/stats` and `/v1/models`
-/// remain token-protected; this response has no gateway or provider secrets.
-async fn console() -> Html<&'static str> {
-    Html(CONSOLE_HTML)
 }
 
 async fn health() -> Json<Value> {
