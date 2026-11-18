@@ -1,7 +1,5 @@
 //! magpie-lite: one local gateway for every coding agent.
 
-use magpie_agents::lifecycle::{Action, AgentId, Gateway, Manager, state_directory};
-
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use magpie_gateway::{
@@ -45,49 +43,6 @@ enum Command {
         #[command(subcommand)]
         command: GroupCommand,
     },
-    /// Preview, connect, disconnect, and recover agent configuration.
-    Agent {
-        #[command(subcommand)]
-        command: AgentCommand,
-    },
-    /// Point Claude Code at the gateway, on a model.
-    Claude {
-        /// Model as the gateway names it: `deepseek/deepseek-chat`.
-        model: String,
-    },
-    /// Point Codex at the gateway, on a model.
-    Codex {
-        /// Model as the gateway names it: `deepseek/deepseek-chat`.
-        model: String,
-    },
-    /// Point Crush at the gateway, on a model.
-    Crush {
-        /// Model as the gateway names it: deepseek/deepseek-chat.
-        model: String,
-    },
-    /// Point Gemini CLI at the gateway, on a model.
-    Gemini {
-        /// Model as the gateway names it: `deepseek/deepseek-chat`.
-        model: String,
-    },
-    /// Point Goose at the gateway, on a model.
-    Goose {
-        /// Model as the gateway names it: `deepseek/deepseek-chat`.
-        model: String,
-    },
-    /// Point OpenCode at the gateway, on a model.
-    #[command(name = "opencode")]
-    OpenCode {
-        /// Model as the gateway names it: `deepseek/deepseek-chat`.
-        model: String,
-    },
-    /// Point Zed at the gateway, on a model.
-    Zed {
-        /// Model as the gateway names it: `deepseek/deepseek-chat`.
-        model: String,
-    },
-    /// List the agents this build can wire, and whether they are installed.
-    Ls,
     /// Show request and usage statistics from the running gateway.
     Stats,
     /// List the models the configured providers serve.
@@ -100,36 +55,6 @@ enum Command {
         /// `provider/model` or `off`; blank just says.
         state: Option<String>,
     },
-}
-
-#[derive(Subcommand)]
-enum AgentCommand {
-    /// Show detection, managed connection, drift, and recovery status as JSON.
-    List,
-    /// Preview an operation without touching agent files. The output never contains keys.
-    Preview {
-        agent: AgentId,
-        #[arg(required_unless_present = "disconnect", conflicts_with = "disconnect")]
-        model: Option<String>,
-        /// Preview restoration instead of a connection.
-        #[arg(long)]
-        disconnect: bool,
-    },
-    /// Connect with a durable backup; optionally require a previously reviewed revision.
-    Connect {
-        agent: AgentId,
-        model: String,
-        #[arg(long)]
-        revision: Option<String>,
-    },
-    /// Restore the pre-connection files; refuses to overwrite subsequent user edits.
-    Disconnect {
-        agent: AgentId,
-        #[arg(long)]
-        revision: Option<String>,
-    },
-    /// Roll back an interrupted connect, or finish an interrupted disconnect.
-    Recover { agent: AgentId },
 }
 
 #[derive(Subcommand)]
@@ -371,44 +296,6 @@ fn parse_output(value: &str) -> Result<(String, u64)> {
         );
     }
     Ok((model.to_owned(), limit))
-}
-
-fn agent_manager(path: &Option<std::path::PathBuf>) -> Result<Manager> {
-    Ok(Manager::native(state_directory(&provider_path(path)?)?)?)
-}
-fn agent_config(
-    path: &Option<std::path::PathBuf>,
-    action: Action,
-    model: Option<&str>,
-) -> Result<Config> {
-    // Restoring/recovering must not depend on a still-valid gateway config.
-    if action == Action::Disconnect {
-        return Ok(Config::default());
-    }
-    let config = load_config(path)?;
-    if model.is_none_or(|model| config.resolve(model).is_none()) {
-        anyhow::bail!("model does not resolve to a configured provider or routing group");
-    }
-    Ok(config)
-}
-fn agent_apply(
-    path: &Option<std::path::PathBuf>,
-    agent: AgentId,
-    action: Action,
-    model: Option<&str>,
-    revision: Option<&str>,
-) -> Result<()> {
-    let manager = agent_manager(path)?;
-    let config = agent_config(path, action, model)?;
-    let gateway = || Gateway {
-        port: config.port,
-        token: &config.token,
-    };
-    let preview = manager.preview(agent, action, model, gateway())?;
-    let revision = revision.unwrap_or(&preview.revision);
-    let status = manager.apply(agent, action, model, revision, gateway())?;
-    println!("{}", serde_json::to_string_pretty(&status)?);
-    Ok(())
 }
 
 #[tokio::main]
@@ -776,147 +663,6 @@ async fn main() -> Result<()> {
                             "found groups are off · the groups you made or changed stay; a request for a found one goes to its model from one provider"
                         );
                     }
-                }
-            }
-        }
-        Command::Agent { command } => match command {
-            AgentCommand::List => {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&agent_manager(&cli.config)?.statuses()?)?
-                );
-            }
-            AgentCommand::Preview {
-                agent,
-                model,
-                disconnect,
-            } => {
-                let action = if disconnect {
-                    Action::Disconnect
-                } else {
-                    Action::Connect
-                };
-                let manager = agent_manager(&cli.config)?;
-                let config = agent_config(&cli.config, action, model.as_deref())?;
-                let preview = manager.preview(
-                    agent,
-                    action,
-                    model.as_deref(),
-                    Gateway {
-                        port: config.port,
-                        token: &config.token,
-                    },
-                )?;
-                println!("{}", serde_json::to_string_pretty(&preview)?);
-            }
-            AgentCommand::Connect {
-                agent,
-                model,
-                revision,
-            } => {
-                agent_apply(
-                    &cli.config,
-                    agent,
-                    Action::Connect,
-                    Some(&model),
-                    revision.as_deref(),
-                )?;
-            }
-            AgentCommand::Disconnect { agent, revision } => {
-                agent_apply(
-                    &cli.config,
-                    agent,
-                    Action::Disconnect,
-                    None,
-                    revision.as_deref(),
-                )?;
-            }
-            AgentCommand::Recover { agent } => {
-                let status = agent_manager(&cli.config)?.recover(agent)?;
-                println!("{}", serde_json::to_string_pretty(&status)?);
-            }
-        },
-        Command::Claude { model } => agent_apply(
-            &cli.config,
-            AgentId::Claude,
-            Action::Connect,
-            Some(&model),
-            None,
-        )?,
-        Command::Codex { model } => agent_apply(
-            &cli.config,
-            AgentId::Codex,
-            Action::Connect,
-            Some(&model),
-            None,
-        )?,
-        Command::Crush { model } => agent_apply(
-            &cli.config,
-            AgentId::Crush,
-            Action::Connect,
-            Some(&model),
-            None,
-        )?,
-        Command::Gemini { model } => agent_apply(
-            &cli.config,
-            AgentId::Gemini,
-            Action::Connect,
-            Some(&model),
-            None,
-        )?,
-        Command::Goose { model } => agent_apply(
-            &cli.config,
-            AgentId::Goose,
-            Action::Connect,
-            Some(&model),
-            None,
-        )?,
-        Command::OpenCode { model } => agent_apply(
-            &cli.config,
-            AgentId::Opencode,
-            Action::Connect,
-            Some(&model),
-            None,
-        )?,
-        Command::Zed { model } => agent_apply(
-            &cli.config,
-            AgentId::Zed,
-            Action::Connect,
-            Some(&model),
-            None,
-        )?,
-        Command::Ls => {
-            for agent in agent_manager(&cli.config)?.statuses()? {
-                println!(
-                    "{:<8} {:<12} detected={} connected={} drifted={} recovery={}",
-                    agent.id.id(),
-                    agent.name,
-                    agent.detected,
-                    agent.connected,
-                    agent.drifted,
-                    agent.recovery_needed
-                );
-                println!(
-                    "         config_file={} config_directory={}",
-                    agent.detection.config_file, agent.detection.config_directory
-                );
-                if let Some(cli) = agent.detection.cli {
-                    println!(
-                        "         CLI: {} ({})",
-                        cli.path.display(),
-                        match cli.on_path {
-                            Some(true) => "on launcher's PATH",
-                            Some(false) => "not on launcher's PATH",
-                            None => "PATH membership unknown; search limited",
-                        }
-                    );
-                } else {
-                    println!("         CLI: not found (not a running-agent check)");
-                }
-                if agent.detection.search_limited {
-                    println!(
-                        "         CLI search reached its entry limit; an installation may be omitted"
-                    );
                 }
             }
         }

@@ -30,7 +30,6 @@ Zed ─────────┘   Chat + Responses +
 - **Local authentication**: every non-health route requires the configured token as Bearer, Anthropic `x-api-key`, or Gemini `x-goog-api-key`; `/health` stays public
 - **Separate web frontend**: run the React console independently from the Rust gateway (`cd crates/app && npm install && npm run dev`); Vite proxies API calls to `http://127.0.0.1:3426` by default, and a production build is written to `crates/app/ui/dist` for static hosting. The browser supplies the configured gateway token; the gateway serves APIs only and no longer embeds a UI.
 - **Request statistics**: token-protected `/stats`, `/config`, and `magpie-lite stats` show provider and per-key totals, token usage, statuses, latency, active secret-free key cooldowns, and recent request metadata (including which key slot served it, never the key); `recent_usage` adds provider/model aggregates over the recent window; `/stats?from=<unix-ms>&to=<unix-ms>` can filter that recent portion (`from` inclusive, `to` exclusive), and the protected web console exposes the same local-time range controls with validation, clear, and auto-refresh preservation; optional sanitized JSONL history keeps the window across restarts while process totals stay process-local
-- **Agent wiring**: `magpie-lite claude <model>` (settings.json env block), `magpie-lite codex <model>` (config.toml provider table, native `wire_api = "responses"`), `magpie-lite crush <model>` (custom OpenAI-compatible provider and large-model pick), `magpie-lite gemini <model>` (`~/.gemini/settings.json` plus `.env`), `magpie-lite goose <model>` (custom OpenAI-compatible provider plus the active model), `magpie-lite opencode <model>` (`~/.config/opencode/opencode.json` provider block), `magpie-lite zed <model>` (OpenAI-compatible provider in Zed settings; the token goes in Zed provider settings or `MAGPIE_LITE_API_KEY`, not `settings.json`)
 - **Conformance tests** for every translation direction, and end-to-end tests over real HTTP with mock Chat and Gemini upstreams
 
 Native thinking/text/tool signature behavior and its limits are documented in
@@ -78,17 +77,6 @@ magpie-lite serve
 cd crates/app && npm install && npm run dev
 # open http://127.0.0.1:5173/ and enter the configured gateway token
 
-# agents use the configured token (default: magpie-lite) as their local API key
-
-# point agents at it
-magpie-lite claude group/daily-coding
-magpie-lite codex group/daily-coding
-magpie-lite crush group/daily-coding
-magpie-lite gemini group/daily-coding
-magpie-lite goose group/daily-coding
-magpie-lite opencode group/daily-coding
-magpie-lite zed group/daily-coding
-
 # see provider/request/token totals
 magpie-lite stats
 
@@ -97,8 +85,6 @@ magpie-lite serve --history-file 'D:\magpie\history.jsonl'
 # or set history_path in config.toml
 # without either, recent history lives in magpie.db beside the config
 ```
-
-Restart the agent after wiring it. For Zed, also set MAGPIE_LITE_API_KEY to the gateway token in Zed's environment, or enter that token in Zed's AI provider settings. Disconnect with `magpie-lite agent disconnect <id>` to restore the saved original configuration, provided no conflicting edits were made.
 
 ## Streaming timeouts
 
@@ -260,26 +246,6 @@ GET `/config` and successful provider/group edits return a numeric `revision` an
 
 Provider and group create/update/delete also accept an optional `Idempotency-Key` header (up to 200 bytes). For the same scope, key, and token-keyed HMAC-SHA256 request digest, the gateway replays the original secret-free snapshot without incrementing the revision; reusing a key with a different request returns 409. Entries are stored in `<config-path>.idempotency.json`, retaining the most recent 256 committed operations. The ledger never stores the token, provider credentials, or raw request body. A pending entry left by a crash fails closed with 409 rather than risking a duplicate write. Successful edits return the secret-free `/config` snapshot. Invalid provider IDs, protocols, URLs, models, keys, and fallback routes return 400. Duplicate providers return 409; missing providers return 404. Changes are persisted through the same atomic config update used by routing groups.
 
-## Agent connection, restore and recovery
-
-The CLI uses seven adapters through the `magpie-agents` crate. Use `agent preview <id> <model>`,
-`agent connect <id> <model>`, `agent preview <id> --disconnect`,
-`agent disconnect <id>` and `agent recover <id>`. `agent list` reports managed
-connection, drift, pending recovery and passive detection details. `ls` includes
-configuration markers, the discovered CLI path and whether it is on the launcher's
-captured PATH (or unknown when the search is limited). Existing per-agent shorthand
-commands also save a durable backup before writing.
-
-Agent connection management is CLI-only. The web console does not inspect or
-modify Agent configuration files.
-
-Unchanged managed files can be restored byte-for-byte; unrelated later edits are
-preserved by selective field restoration. Managed-field conflicts and unsafe
-configuration shapes are refused rather than overwritten. Multi-file operations have explicit journaled
-recovery, not an atomic all-file transaction. Journals retain sensitive baseline
-credentials and are **not encrypted**. See `docs/agent-lifecycle.md` for commands,
-backup retention, platform permissions and precise limitations.
-
 ## Discovering models and testing providers
 
 The provider editor offers **Discover models** and **Test connection** for both
@@ -398,8 +364,7 @@ file path receive 503 for editing; use `serve_with_config_path` to enable it.
 |---|---|
 | `crates/core` | The IR and the wire codecs (chat, responses, anthropic, gemini), streaming included |
 | `crates/gateway` | The axum server, model routing, upstream clients, SSE translation |
-| `crates/agents` | Shared Agent adapters, preview, revision checks, journals and restoration/recovery used by the CLI |
-| `crates/cli` | The `magpie-lite` binary, including Agent connection commands |
+| `crates/cli` | The `magpie-lite` gateway and provider/group management binary |
 
 ## Design
 
@@ -414,9 +379,8 @@ Tests are the contract: `crates/core/tests/translation.rs` checks real wire shap
 
 ## Not yet (the roadmap)
 
-- More agents (Cursor CLI, ...)
+- Agent configuration management
 - A TUI
-- Selective Agent restoration preserving later unrelated edits and richer detection/override semantics
 - Broader provider capability metadata and stream-only/specialized connection probes
 - Specialized (vision/tool-call) connection probes (stream-only vendors already pass the streamed check)
 - More routing policies, versioned admin API and separate management authentication
@@ -425,11 +389,8 @@ See [core parity tracker](docs/core-parity.md) for implementation evidence and r
 
 ## Safety
 
-Agent configuration operations use reviewed revisions and durable backups, and refuse later file drift. The test suites run against explicit temporary paths or child processes — never your real home. `MAGPIE_LITE_HOME` redirects agent config lookups in sandboxes and wrappers. Sensitive backups are access-restricted but not encrypted; see `docs/agent-lifecycle.md`.
+The test suites run against explicit temporary paths or child processes — never your real home.
 
 ## License
 
 MIT, like magpie.
-
-The frontend no longer includes Agent lifecycle controls. CLI lifecycle behavior
-is tested with `cargo test -p magpie-cli --test agent_lifecycle`.

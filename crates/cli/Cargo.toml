@@ -9,7 +9,6 @@ name = "magpie-lite"
 path = "src/main.rs"
 
 [dependencies]
-magpie-agents = { path = "../agents" }
 magpie-gateway = { path = "../gateway" }
 anyhow.workspace = true
 clap.workspace = true
