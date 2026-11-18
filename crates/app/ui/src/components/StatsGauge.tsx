@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Activity } from "lucide-react";
 import type { RequestRecord, Stats } from "../types";
-import { compact, fmt, percent } from "../util";
+import { cacheHitRate, compact, decodeSpeed, fmt, fmtCost, hitPct, percent } from "../util";
 import { useLocale, useT } from "../i18n";
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
@@ -130,6 +130,10 @@ export default function StatsGauge({ stats }: { stats: Stats | null }) {
   const totalRequests = stats?.total_requests ?? 0;
   const errors = stats?.errors ?? 0;
   const rate = totalRequests ? errors / totalRequests : 0;
+  const cost = totals?.cost;
+  const unpriced = totals?.unpriced ?? 0;
+  const hit = cacheHitRate(totals ?? {});
+  const speed = decodeSpeed(totals ?? {});
 
   const categories = useMemo<Category[]>(() => {
     const entries: Category[] = Object.entries(stats?.recent_usage?.by_provider ?? {}).map(([id, s]) => ({
@@ -190,6 +194,19 @@ export default function StatsGauge({ stats }: { stats: Stats | null }) {
           <p className="gauge-sub">
             {t("metrics.tokensInOut", { in: compact(input), out: compact(output) })}
             {cached ? t("metrics.cached", { cached: compact(cached) }) : ""}
+          </p>
+          <p className="gauge-sub gauge-vitals">
+            <span title={t("metrics.costTitle", { n: fmt(unpriced) })}>{fmtCost(cost, unpriced)}</span>
+            <span aria-hidden="true">·</span>
+            <span title={t("metrics.hitTitle")}>{t("metrics.hitRate", { p: hitPct(hit) })}</span>
+            {speed ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span title={t("metrics.speedTitle", { n: fmt(totals?.decode_n ?? 0) })}>
+                  {t("metrics.tps", { n: fmt(Math.round(speed)) })}
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="gauge-side">

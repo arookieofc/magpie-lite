@@ -2250,6 +2250,7 @@ name = "magpie-store"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "magpie-router",
  "rusqlite",
  "serde",
  "serde_json",

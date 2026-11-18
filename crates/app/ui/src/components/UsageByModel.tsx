@@ -1,6 +1,6 @@
 import { Boxes } from "lucide-react";
 import type { Stats } from "../types";
-import { compact, fmt } from "../util";
+import { cacheHitRate, compact, decodeSpeed, fmt, fmtCost, hitPct } from "../util";
 import { Card, Empty } from "./ui";
 import { useT } from "../i18n";
 
@@ -33,11 +33,15 @@ export default function UsageByModel({ stats }: { stats: Stats | null }) {
                 <th scope="col" className="num">{t("usage.errors")}</th>
                 <th scope="col" className="num">{t("usage.input")}</th>
                 <th scope="col" className="num">{t("usage.output")}</th>
+                <th scope="col" className="num" title={t("usage.hitTitle")}>{t("usage.hitRate")}</th>
+                <th scope="col" className="num">{t("usage.cost")}</th>
+                <th scope="col" className="num" title={t("usage.speedTitle")}>{t("usage.speed")}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(([model, u]) => {
                 const tokens = u.input_tokens + u.output_tokens;
+                const speed = decodeSpeed(u);
                 return (
                   <tr key={model}>
                     <td><code className="route">{model}</code></td>
@@ -51,6 +55,13 @@ export default function UsageByModel({ stats }: { stats: Stats | null }) {
                     <td className={`num${u.errors ? " text-bad" : " text-muted"}`}>{fmt(u.errors)}</td>
                     <td className="num">{fmt(u.input_tokens)}</td>
                     <td className="num">{fmt(u.output_tokens)}</td>
+                    <td className="num">{hitPct(cacheHitRate(u))}</td>
+                    <td className={`num${u.cost ? "" : " text-muted"}`} title={u.unpriced ? t("usage.unpricedTitle", { n: fmt(u.unpriced) }) : undefined}>
+                      {fmtCost(u.cost, u.unpriced)}
+                    </td>
+                    <td className={`num${speed ? "" : " text-muted"}`} title={u.decode_n ? t("usage.speedCount", { n: fmt(u.decode_n) }) : undefined}>
+                      {speed ? t("usage.tps", { n: fmt(Math.round(speed)) }) : "—"}
+                    </td>
                   </tr>
                 );
               })}

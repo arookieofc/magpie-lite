@@ -20,6 +20,66 @@ export function percent(part: number, whole: number): string {
   return `${p >= 99.95 || p === 0 ? p.toFixed(0) : p.toFixed(1)}%`;
 }
 
+// A cost as upstream's fmtCost says it: two decimals at a dollar and up,
+// a sub-mill amount to its first two digits rather than $0.000, "+"
+// when some calls in the sum had no known price.
+export function fmtCost(cost?: number, unpriced?: number): string {
+  if (typeof cost !== "number" || (!cost && unpriced)) return "—";
+  const digits = cost >= 1 ? 2 : cost > 0 && cost < 1e-3 ? 1 - Math.floor(Math.log10(cost)) : 3;
+  return `$${cost.toFixed(digits)}${unpriced ? "+" : ""}`;
+}
+
+// A total's cache hit rate: the share of the prompt read from cache,
+// null when nothing was prompted (upstream's cacheHitOf).
+export function cacheHitRate(u: {
+  input_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
+}): number | null {
+  const prompt = (u.input_tokens ?? 0) + (u.cache_read_tokens ?? 0) + (u.cache_write_tokens ?? 0);
+  return prompt > 0 ? (u.cache_read_tokens ?? 0) / prompt : null;
+}
+
+// A hit rate as a percent, more decimals where rounding would say 100%
+// or 0% of a partly-cached prompt (upstream's hitPct).
+export function hitPct(h: number | null, d = 0): string {
+  if (h === null) return "—";
+  let s = (100 * h).toFixed(d);
+  while (d < 2 && h > 0 && h < 1 && (+s >= 100 || +s <= 0)) s = (100 * h).toFixed(++d);
+  return (h < 1 && +s >= 100 ? "99.99" : h > 0 && +s <= 0 ? "0.01" : s) + "%";
+}
+
+// Timed replies' mean write speed in tokens a second, over the decode
+// window the backend measured (upstream's Totals.Speed / ledSpeed).
+export function decodeSpeed(u: { decode_ms?: number; decode_out?: number }): number {
+  const ms = u.decode_ms ?? 0;
+  return ms > 0 ? ((u.decode_out ?? 0) * 1000) / ms : 0;
+}
+
+// One record's decode speed in tok/s, telling none (0) unless the reply
+// was streamed, timed and long enough — mirrors RequestRecord::decode.
+export function recordSpeed(r: {
+  status?: string;
+  ttft_ms?: number;
+  first_text_ms?: number;
+  latency_ms?: number;
+  usage?: { output?: number; reasoning?: number };
+}): number {
+  if (r.status !== "ok" || !(r.ttft_ms && r.ttft_ms > 0)) return 0;
+  const reasoning = r.usage?.reasoning ?? 0;
+  const output = r.usage?.output ?? 0;
+  let out = output;
+  let start = r.ttft_ms;
+  if (reasoning > 0) {
+    if (!(r.first_text_ms && r.first_text_ms > 0)) return 0;
+    out = output - reasoning;
+    start = r.first_text_ms;
+  }
+  const w = (r.latency_ms ?? 0) - start;
+  if (out <= 0 || w < 100 || out * 1000 > 10_000 * w) return 0;
+  return out / (w / 1000);
+}
+
 export function formatDuration(ms: number): string {
   if (ms === 0) return "Disabled";
   const s = Math.max(1, Math.ceil(ms / 1000));

@@ -118,7 +118,7 @@ const PRESETS: &[Preset] = &[
 /// trailing dot: `HTTPS://API.OPENAI.COM:443/v1` becomes
 /// `api.openai.com`. Anything unparsable comes back as written, which
 /// matches no preset.
-fn host_of(base_url: &str) -> String {
+pub fn host_of(base_url: &str) -> String {
     let after_scheme = base_url
         .split_once("://")
         .map(|(_, rest)| rest)

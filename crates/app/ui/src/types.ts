@@ -8,6 +8,7 @@ export interface UsageSnapshot {
   output?: number;
   cache_read?: number;
   cache_write?: number;
+  reasoning?: number;
 }
 
 export interface TryRecord {
@@ -53,9 +54,12 @@ export interface RequestRecord {
   rejected?: boolean;
   error?: string;
   latency_ms: number;
+  ttft_ms?: number;
+  first_text_ms?: number;
   usage: UsageSnapshot;
   classified?: Classified;
   rule?: RuleTrace;
+  cost?: number;
 }
 
 export interface KeyStats {
@@ -74,6 +78,12 @@ export interface RecentUsageStats {
   cache_write_tokens: number;
   total_latency_ms: number;
   average_latency_ms?: number;
+  reasoning_tokens?: number;
+  cost?: number;
+  unpriced?: number;
+  decode_n?: number;
+  decode_ms?: number;
+  decode_out?: number;
 }
 
 export interface RecentUsageSummary {

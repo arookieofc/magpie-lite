@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { ArrowRight, ChevronRight, ScrollText, Search } from "lucide-react";
 import type { RequestRecord, Stats } from "../types";
-import { fmt, timeOf } from "../util";
+import { fmt, fmtCost, recordSpeed, timeOf } from "../util";
 import type { StatsRange } from "../App";
 import { Badge, Card, Empty, Segmented } from "./ui";
 import { DatePicker } from "./DatePicker";
@@ -31,6 +31,11 @@ function Details({ r }: { r: RequestRecord }) {
   const usage = r.usage ?? {};
   if (usage.cache_read) facts.push([t("req.dCacheRead"), fmt(usage.cache_read)]);
   if (usage.cache_write) facts.push([t("req.dCacheWrite"), fmt(usage.cache_write)]);
+  if (usage.reasoning) facts.push([t("req.dReasoning"), fmt(usage.reasoning)]);
+  if (r.ttft_ms) facts.push([t("req.dTtft"), `${fmt(r.ttft_ms)}ms`]);
+  if (r.cost != null) facts.push([t("req.dCost"), fmtCost(r.cost)]);
+  const speed = recordSpeed(r);
+  if (speed) facts.push([t("req.dSpeed"), t("usage.tps", { n: fmt(Math.round(speed)) })]);
   return (
     <div className="req-details">
       <div>

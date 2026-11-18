@@ -51,19 +51,51 @@ fn main() -> anyhow::Result<()> {
     }
     let store = Store::open(&path)?;
 
-    // (provider, requested model, upstream model, client protocol).
+    // (provider, base URL, requested model, upstream model, client protocol).
+    // The base URL prices the record as the real tracker does.
     let pool = [
-        ("deepseek", "deepseek-chat", "deepseek-chat", "chat"),
-        ("openai", "gpt-4o-mini", "gpt-4o-mini", "chat"),
-        ("openai", "gpt-5", "gpt-5-2025-08-07", "responses"),
+        (
+            "deepseek",
+            "https://api.deepseek.com/v1",
+            "deepseek-v4-pro",
+            "deepseek-v4-pro",
+            "chat",
+        ),
+        (
+            "openai",
+            "https://api.openai.com/v1",
+            "gpt-4o-mini",
+            "gpt-4o-mini",
+            "chat",
+        ),
+        (
+            "openai",
+            "https://api.openai.com/v1",
+            "gpt-5",
+            "gpt-5.2",
+            "responses",
+        ),
         (
             "anthropic",
+            "https://api.anthropic.com",
             "claude-sonnet-4-5",
             "claude-sonnet-4-5-20250514",
             "anthropic",
         ),
-        ("gemini", "gemini-2.5-flash", "gemini-2.5-flash", "gemini"),
-        ("qwen", "qwen-max", "qwen-max-2025-01-25", "chat"),
+        (
+            "gemini",
+            "https://generativelanguage.googleapis.com/v1beta",
+            "gemini-3-flash-preview",
+            "gemini-3-flash-preview",
+            "gemini",
+        ),
+        (
+            "zhipu",
+            "https://open.bigmodel.cn/api/paas/v4",
+            "glm-4.7",
+            "glm-4.7",
+            "chat",
+        ),
     ];
     let failures = ["rate_limited", "timeout", "context_overflow"];
 
@@ -74,7 +106,7 @@ fn main() -> anyhow::Result<()> {
     let step_ms: u64 = 7 * 24 * 60 * 60 * 1000 / rows;
     let now = now_ms();
     for i in 0..rows {
-        let (provider, requested, upstream, protocol) = pool[(i as usize) % pool.len()];
+        let (provider, base_url, requested, upstream, protocol) = pool[(i as usize) % pool.len()];
         let failed = i % 12 == 7;
         let status = if failed {
             pick(&mut rng, &failures)
@@ -83,7 +115,11 @@ fn main() -> anyhow::Result<()> {
         };
         let started = now - (rows - 1 - i) * step_ms - range(&mut rng, 0, 20 * 60 * 1000);
         let input = range(&mut rng, 200, 8000) as i64;
-        let output = if failed { 0 } else { range(&mut rng, 50, 3000) as i64 };
+        let output = if failed {
+            0
+        } else {
+            range(&mut rng, 50, 3000) as i64
+        };
         let cache_read = if !failed && rng_next(&mut rng) % 3 == 0 {
             Some(range(&mut rng, 1024, 6000))
         } else {
@@ -94,10 +130,28 @@ fn main() -> anyhow::Result<()> {
         let latency = if failed {
             range(&mut rng, 200, 2500)
         } else {
-            range(&mut rng, 400, 9000)
+            range(&mut rng, 1500, 9000)
         };
         let effort = pick(&mut rng, &["", "", "low", "medium", "high"]);
         let first_ms = range(&mut rng, 150, latency.max(200));
+        // A streamed reply's decode window: first bytes partway in, so
+        // w = latency - ttft stays over the 100ms floor.
+        let ttft_ms = if !failed && stream {
+            range(&mut rng, 100, 800)
+        } else {
+            0
+        };
+        // Some replies reason: their answer starts at first_text.
+        let reasoning = if !failed && rng_next(&mut rng) % 4 == 0 {
+            Some(range(&mut rng, 10, (output.max(11) - 10) as u64))
+        } else {
+            None
+        };
+        let first_text_ms = if reasoning.is_some() && stream {
+            ttft_ms + range(&mut rng, 100, 1500)
+        } else {
+            0
+        };
 
         let mut tries = vec![serde_json::json!({
             "provider": provider,
@@ -124,6 +178,17 @@ fn main() -> anyhow::Result<()> {
         if let Some(cached) = cache_read {
             usage["cache_read"] = serde_json::json!(cached);
         }
+        if let Some(r) = reasoning {
+            usage["reasoning"] = serde_json::json!(r);
+        }
+        let cost = magpie_router::prices::price_of(base_url, upstream).map(|p| {
+            p.cost(
+                input as u64,
+                output.max(0) as u64,
+                cache_read.unwrap_or(0),
+                0,
+            )
+        });
 
         let body = serde_json::json!({
             "started_unix_ms": started,
@@ -137,7 +202,10 @@ fn main() -> anyhow::Result<()> {
             "status": status,
             "error": if failed { status } else { "" },
             "latency_ms": latency,
+            "ttft_ms": ttft_ms,
+            "first_text_ms": first_text_ms,
             "usage": usage,
+            "cost": cost,
         });
         store.append_request(started as i64, provider, status, input, output, &body)?;
     }
@@ -151,10 +219,7 @@ fn main() -> anyhow::Result<()> {
     store.set_affinity_snapshot(now as i64, &sticks)?;
 
     let recent = store.load_recent(1000)?;
-    let ok = recent
-        .iter()
-        .filter(|r| r["status"] == "ok")
-        .count();
+    let ok = recent.iter().filter(|r| r["status"] == "ok").count();
     println!(
         "seeded {} requests ({} ok, {} failed) + {} affinity sticks into {}",
         recent.len(),

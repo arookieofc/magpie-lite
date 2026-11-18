@@ -2621,6 +2621,7 @@ async fn send_with_fallback(
             'keys: for (attempt, (key_slot, api_key)) in route.api_keys.iter().enumerate() {
                 let candidate = UpstreamCandidate::new(&route, *key_slot);
                 tracker.begin_attempt(&route.provider.id, &route.model, *key_slot);
+                tracker.set_base_url(&route.provider.base_url);
                 // A key or account with `max_concurrency` is asked once one of
                 // its slots is free, in turn; one with `max_rpm` then waits for
                 // room in its minute. Its queue full, or its wait out, nobody
@@ -4294,6 +4295,7 @@ pub(crate) async fn proxy_parsed(
         {
             Ok((resp, candidate, decision)) => {
                 tracker.set_route(&candidate.provider.id, &candidate.model, candidate.key_slot);
+                tracker.set_base_url(&candidate.provider.base_url);
                 retired_store::unretire(
                     &candidate.provider.id,
                     &candidate.model,
@@ -4303,6 +4305,7 @@ pub(crate) async fn proxy_parsed(
             }
             Err((response, candidate, decision)) => {
                 tracker.set_route(&candidate.provider.id, &candidate.model, candidate.key_slot);
+                tracker.set_base_url(&candidate.provider.base_url);
                 tracker.finish(response.history_status(), &Usage::default());
                 // `affine` counted this conversation while its first request
                 // was out. A failed request has no stream to own the guard, so
@@ -4441,6 +4444,12 @@ pub(crate) async fn proxy_parsed(
 
                     let answer = event.is_answer();
                     emitted_answer |= answer || item.answer_observed;
+                    if matches!(event, StreamEvent::TextDelta { ref text } if !text.is_empty()) {
+                        // First visible answer text: a reasoning reply's
+                        // decode speed counts from here (the reference's
+                        // FirstText), not from the first content.
+                        tracker.first_answer_text();
+                    }
 
                     // A cut mid-reply — the client already has something
                     // of it — is asked to go on from there: hold its

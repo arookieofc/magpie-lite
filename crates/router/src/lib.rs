@@ -23,6 +23,7 @@ pub mod model_rest;
 pub mod object_root;
 pub mod optional_fields;
 pub mod presets;
+pub mod prices;
 pub mod reply_room;
 pub mod retired;
 pub mod roomy;

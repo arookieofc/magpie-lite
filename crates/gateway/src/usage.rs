@@ -10,8 +10,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use magpie_core::effort::Effort;
 use magpie_core::ir::{CompletionRequest, Usage};
-use serde::{Deserialize, Serialize};
 use magpie_store::Store;
+use serde::{Deserialize, Serialize};
 
 /// How many recent request records are kept for `/stats`.
 const RECENT_LIMIT: usize = 1_000;
@@ -27,6 +27,9 @@ pub struct UsageSnapshot {
     pub cache_read: Option<u64>,
     /// Tokens written to a prompt cache, when reported.
     pub cache_write: Option<u64>,
+    /// Output tokens spent on reasoning, when a protocol reports them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<u64>,
 }
 
 impl From<&Usage> for UsageSnapshot {
@@ -36,6 +39,7 @@ impl From<&Usage> for UsageSnapshot {
             output: value.output,
             cache_read: value.cache_read,
             cache_write: value.cache_write,
+            reasoning: value.reasoning,
         }
     }
 }
@@ -89,6 +93,15 @@ pub struct RequestRecord {
     pub error: String,
     /// Gateway processing time.
     pub latency_ms: u64,
+    /// Milliseconds from the request to the serving try's first bytes
+    /// (the reference's `TTFT`). Absent on older history lines.
+    #[serde(default, skip_serializing_if = "u64_is_zero")]
+    pub ttft_ms: u64,
+    /// Milliseconds from the request to the first visible answer text —
+    /// a reasoning reply's speed counts only its answer, from here (the
+    /// reference's `FirstText`). Absent when there was none.
+    #[serde(default, skip_serializing_if = "u64_is_zero")]
+    pub first_text_ms: u64,
     /// Provider usage, when reported.
     pub usage: UsageSnapshot,
     /// What the routing group's classifier was asked as the turn began,
@@ -100,6 +113,45 @@ pub struct RequestRecord {
     /// matched. Older history lines predate it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rule: Option<crate::rules::RuleTrace>,
+    /// Cost in USD at the serving provider's listed price; absent when
+    /// the model has no known price (the reference's `Cost`, per record).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+}
+
+/// A reply's speed is its answer tokens over the ms from its first
+/// content to its end — under this bound or over `MAX_DECODE_SPEED`
+/// tok/s the reply came in one burst written before the window opened
+/// and tells no speed (the reference's `DecodeWindow`).
+const MIN_DECODE_MS: u64 = 100;
+const MAX_DECODE_SPEED: u64 = 10_000;
+
+impl RequestRecord {
+    /// Answer tokens and the ms they took, when this record tells a
+    /// speed: streamed (ttft known), some tokens written, window long
+    /// enough, not impossibly fast. A reply that reasoned counts only
+    /// its answer (output less reasoning) from first_text_ms.
+    pub fn decode(&self) -> Option<(u64, u64)> {
+        if self.status != "ok" || self.ttft_ms == 0 {
+            return None;
+        }
+        let (out, start) = if self.usage.reasoning.unwrap_or(0) > 0 {
+            if self.first_text_ms == 0 {
+                return None;
+            }
+            (
+                self.usage.output.unwrap_or(0) - self.usage.reasoning.unwrap_or(0),
+                self.first_text_ms,
+            )
+        } else {
+            (self.usage.output.unwrap_or(0), self.ttft_ms)
+        };
+        let w = self.latency_ms.checked_sub(start)?;
+        if out == 0 || w < MIN_DECODE_MS || out.saturating_mul(1000) > MAX_DECODE_SPEED * w {
+            return None;
+        }
+        Some((out, w))
+    }
 }
 
 fn is_false(value: &bool) -> bool {
@@ -197,6 +249,24 @@ pub struct RecentUsageStats {
     pub total_latency_ms: u64,
     /// Mean gateway latency, rounded down.
     pub average_latency_ms: Option<u64>,
+    /// Summed reasoning tokens (inside output_tokens).
+    #[serde(default)]
+    pub reasoning_tokens: u64,
+    /// Summed cost in USD for calls whose model has a listed price.
+    #[serde(default)]
+    pub cost: f64,
+    /// Calls with tokens but no known price (the reference's Unpriced).
+    #[serde(default)]
+    pub unpriced: u64,
+    /// Replies whose decode speed was measured (streamed, timed).
+    #[serde(default)]
+    pub decode_n: u64,
+    /// Milliseconds those replies took to write their answer, summed.
+    #[serde(default)]
+    pub decode_ms: u64,
+    /// Answer tokens written in that time, summed.
+    #[serde(default)]
+    pub decode_out: u64,
 }
 
 impl RecentUsageStats {
@@ -224,11 +294,40 @@ impl RecentUsageStats {
         self.cache_write_tokens = self
             .cache_write_tokens
             .saturating_add(record.usage.cache_write.unwrap_or(0));
+        self.reasoning_tokens = self
+            .reasoning_tokens
+            .saturating_add(record.usage.reasoning.unwrap_or(0));
         self.total_latency_ms = self.total_latency_ms.saturating_add(record.latency_ms);
+        if let Some(cost) = record.cost {
+            self.cost += cost;
+        } else if record.usage.input.is_some() || record.usage.output.is_some() {
+            self.unpriced = self.unpriced.saturating_add(1);
+        }
+        if let Some((out, ms)) = record.decode() {
+            self.decode_n = self.decode_n.saturating_add(1);
+            self.decode_ms = self.decode_ms.saturating_add(ms);
+            self.decode_out = self.decode_out.saturating_add(out);
+        }
     }
 
     fn finish(&mut self) {
         self.average_latency_ms = self.total_latency_ms.checked_div(self.requests);
+    }
+
+    /// Share of the prompt read from the cache (the reference's
+    /// `Totals.HitRate`); `None` when no call reported prompt tokens.
+    pub fn hit_rate(&self) -> Option<f64> {
+        let p = self
+            .input_tokens
+            .saturating_add(self.cache_read_tokens)
+            .saturating_add(self.cache_write_tokens);
+        (p > 0).then(|| self.cache_read_tokens as f64 / p as f64)
+    }
+
+    /// Mean answer speed over the measured replies, tokens a second
+    /// (the reference's summed `Decode` speed).
+    pub fn speed(&self) -> Option<f64> {
+        (self.decode_ms > 0).then(|| self.decode_out as f64 / (self.decode_ms as f64 / 1000.0))
     }
 }
 
@@ -591,6 +690,13 @@ pub struct RequestTracker {
     record: RequestRecord,
     usage: Usage,
     reask_usage: Usage,
+    /// Base URL of the route now under way, for price lookup at finish.
+    base_url: String,
+    /// When the current attempt's first bytes arrived (request timeline),
+    /// for the record's TTFT.
+    first_content: Option<Instant>,
+    /// First visible answer text timing within this attempt.
+    first_text: Option<Instant>,
     /// The index into `record.tries` the current send occupies and when
     /// it went out; `record_attempt` writes the outcome there. A reask
     /// of the same candidate keeps its try (the reference's Try).
@@ -628,15 +734,35 @@ impl RequestTracker {
                 rejected: false,
                 error: String::new(),
                 latency_ms: 0,
+                ttft_ms: 0,
+                first_text_ms: 0,
                 usage: UsageSnapshot::default(),
                 classified: None,
                 rule: None,
+                cost: None,
             },
             usage: Usage::default(),
             reask_usage: Usage::default(),
+            base_url: String::new(),
+            first_content: None,
+            first_text: None,
             try_index: None,
             try_started: None,
             finished: false,
+        }
+    }
+
+    /// The serving route's base URL for price lookup; written with the
+    /// route, so a fallback to a different vendor prices right.
+    pub fn set_base_url(&mut self, base_url: &str) {
+        self.base_url = base_url.to_owned();
+    }
+
+    /// The first visible answer text arrived in the current attempt —
+    /// a reasoning reply's decode speed counts from here, not TTFT.
+    pub fn first_answer_text(&mut self) {
+        if self.first_text.is_none() {
+            self.first_text = Some(Instant::now());
         }
     }
 
@@ -688,6 +814,9 @@ impl RequestTracker {
     /// time-to-first, once. Headers on a whole reply, the first event of
     /// a stream; a send that never produced bytes keeps 0.
     pub fn first_bytes(&mut self) {
+        if self.first_content.is_none() {
+            self.first_content = Some(Instant::now());
+        }
         let Some(index) = self.try_index else {
             return;
         };
@@ -794,6 +923,30 @@ impl RequestTracker {
         self.usage.merge(usage);
         let total = self.total_usage();
         self.record.usage = UsageSnapshot::from(&total);
+        // The serving try's first bytes on the request timeline are the
+        // request's TTFT; the reply's visible answer text stamps
+        // first_text (the reference's TTFT/FirstText on Record).
+        self.record.ttft_ms = self
+            .first_content
+            .map(|at| elapsed_ms(at.duration_since(self.started_at)))
+            .unwrap_or(0);
+        self.record.first_text_ms = self
+            .first_text
+            .map(|at| elapsed_ms(at.duration_since(self.started_at)))
+            .unwrap_or(0);
+        if !self.base_url.is_empty() {
+            self.record.cost =
+                magpie_router::prices::price_of(&self.base_url, &self.record.upstream_model).map(
+                    |p| {
+                        p.cost(
+                            total.input.unwrap_or(0),
+                            total.output.unwrap_or(0),
+                            total.cache_read.unwrap_or(0),
+                            total.cache_write.unwrap_or(0),
+                        )
+                    },
+                );
+        }
         // A try still under way when the request ended — the client hung
         // up mid-send, or a local stop came before the send did — takes
         // the request's own status, and its ms runs to the end.
@@ -895,14 +1048,18 @@ mod tests {
             rejected: false,
             error: String::new(),
             latency_ms: index,
+            ttft_ms: 0,
+            first_text_ms: 0,
             usage: UsageSnapshot {
                 input: Some(index),
                 output: Some(index + 1),
                 cache_read: None,
                 cache_write: None,
+                reasoning: None,
             },
             classified: None,
             rule: None,
+            cost: None,
         }
     }
 
@@ -964,6 +1121,7 @@ mod tests {
         assert_eq!(
             keys,
             [
+                "seq",
                 "started_unix_ms",
                 "client_protocol",
                 "requested_model",
@@ -1263,5 +1421,84 @@ mod tests {
         assert_eq!(snapshot.total_requests, 1);
         assert_eq!(snapshot.recent_requests[0].status, "ok");
         assert_eq!(snapshot.recent_requests[0].usage.input, Some(1));
+    }
+
+    #[test]
+    fn decode_counts_only_streamed_answers_over_the_window() {
+        // A whole reply with no first-token timing tells no speed.
+        let mut r = record(1, "ok");
+        r.latency_ms = 5000;
+        assert!(r.decode().is_none());
+        // So does one too short to time, or impossibly fast.
+        r.ttft_ms = 100;
+        r.latency_ms = 150;
+        assert!(r.decode().is_none());
+        r.latency_ms = 5000;
+        r.usage.output = Some(100_000_000);
+        assert!(r.decode().is_none());
+        // A streamed reply of 2,000 tokens over 4 s decodes at 500 tok/s.
+        r.usage.output = Some(2_000);
+        assert_eq!(r.decode(), Some((2_000, 4_900)));
+        // A reasoning reply counts only its answer, from the first text.
+        r.usage.reasoning = Some(500);
+        assert!(r.decode().is_none()); // no first_text timing: untold
+        r.first_text_ms = 2_100;
+        assert_eq!(r.decode(), Some((1_500, 2_900)));
+        // A failed record never counts.
+        r.status = "upstream_error".into();
+        assert!(r.decode().is_none());
+    }
+
+    #[test]
+    fn totals_carry_hit_rate_cost_and_speed() {
+        let mut log = RequestLog::default();
+        let mut a = record(1, "ok");
+        a.ttft_ms = 100;
+        a.latency_ms = 5_000;
+        a.usage.input = Some(1_000);
+        a.usage.output = Some(2_000);
+        a.usage.cache_read = Some(4_000);
+        a.usage.cache_write = Some(1_000);
+        a.cost = Some(0.0125);
+        log.record(a);
+        // An unpriced record still counts tokens and requests.
+        let b = record(2, "ok");
+        log.record(b);
+
+        let t = log.snapshot().recent_usage.totals;
+        assert_eq!(t.cost, 0.0125);
+        assert_eq!(t.unpriced, 1);
+        assert_eq!(t.hit_rate(), Some(4_000.0 / 6_002.0));
+        assert_eq!(t.decode_n, 1);
+        assert_eq!(t.speed(), Some(2_000.0 / (4_900.0 / 1000.0)));
+    }
+
+    #[test]
+    fn finish_prices_the_record_at_the_serving_base_url() {
+        let log = Arc::new(Mutex::new(RequestLog::default()));
+        let mut t = tracker(log.clone());
+        t.set_base_url("https://api.deepseek.com/v1");
+        t.set_route("deepseek", "deepseek-v4-pro", 0);
+        t.observe_usage(&Usage {
+            input: Some(1_000_000),
+            output: Some(1_000_000),
+            cache_read: Some(1_000_000),
+            cache_write: None,
+            reasoning: None,
+        });
+        t.finish("ok", &Usage::default());
+
+        let record = &log.lock().unwrap().snapshot().recent_requests[0];
+        // deepseek-v4-pro: $0.66 in, $1.98 out, $0.022 cache read / Mtok.
+        let cost = record.cost.expect("priced");
+        assert!((cost - (0.66 + 1.98 + 0.022)).abs() < 1e-6);
+
+        // An unknown host prices nothing.
+        let log = Arc::new(Mutex::new(RequestLog::default()));
+        let mut t = tracker(log.clone());
+        t.set_base_url("https://relay.example.com/v1");
+        t.finish("ok", &Usage::default());
+        let record = &log.lock().unwrap().snapshot().recent_requests[0];
+        assert!(record.cost.is_none());
     }
 }

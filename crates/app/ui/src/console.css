@@ -889,6 +889,8 @@ button.sel:disabled { cursor: not-allowed; }
 .gauge-number { font-size: 30px; font-weight: 650; letter-spacing: -.02em; }
 .gauge-unit { font-size: 12px; font-weight: 500; color: var(--muted); }
 .gauge-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gauge-vitals { display: flex; gap: 6px; align-items: baseline; }
+.gauge-vitals > :first-child { color: var(--text); font-weight: 550; }
 .gauge-side { text-align: right; flex: none; }
 .gauge-rate { margin: 0; font-size: 22px; line-height: 1.15; font-weight: 650; font-variant-numeric: tabular-nums; transition: color 300ms var(--ease); }
 .gauge-rate.good { color: var(--good); }
