@@ -76,6 +76,7 @@ export default function TopBar({
           <input
             type="checkbox"
             role="switch"
+            aria-label={t("topbar.auto")}
             checked={autoRefresh}
             onChange={(e) => setAutoRefresh(e.target.checked)}
           />
