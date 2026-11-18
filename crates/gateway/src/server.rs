@@ -57,9 +57,6 @@ use crate::usage::{RequestLog, RequestTracker};
 
 /// Shared handler state.
 pub struct AppState {
-    /// Retained for source compatibility with embedding clients; the gateway
-    /// no longer provides Agent lifecycle endpoints.
-    pub agents: Option<()>,
     /// The loaded configuration.
     pub config: ConfigStore,
     /// The pooled upstream client.
@@ -152,10 +149,18 @@ async fn authenticate(
     if authorized {
         next.run(request).await
     } else {
-        err_response(
-            StatusCode::UNAUTHORIZED,
-            upstream::chat_error(StatusCode::UNAUTHORIZED, "missing or invalid gateway token"),
-        )
+        let message = "missing or invalid gateway token";
+        let body = match request.uri().path() {
+            path if path.starts_with("/v1beta/") => upstream::gemini_error_reason(
+                StatusCode::UNAUTHORIZED,
+                message,
+                "PERMISSION_DENIED",
+            ),
+            "/v1/messages" => upstream::anthropic_error(StatusCode::UNAUTHORIZED, message),
+            "/v1/responses" => upstream::responses_error(StatusCode::UNAUTHORIZED, message),
+            _ => upstream::chat_error(StatusCode::UNAUTHORIZED, message),
+        };
+        err_response(StatusCode::UNAUTHORIZED, body)
     }
 }
 
@@ -217,11 +222,11 @@ pub async fn serve_with_config_path(
         &config,
         shared_store.clone(),
     )?));
-    let agent_state = agent_config
+    let retired_path = agent_config
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
-        .join("agent-state");
-    retired_store::init(agent_state.join("retired.json"));
+        .join("retired.json");
+    retired_store::init(retired_path);
     // Persist affinity beside the resolved config even when the embedded
     // caller supplied no path and the default config location is in use.
     let affinity = match shared_store {
@@ -229,7 +234,6 @@ pub async fn serve_with_config_path(
         None => AffinityStore::beside(Some(agent_config.as_path())),
     };
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, config_path),
         http,
         requests,
@@ -5388,7 +5392,6 @@ mod tests {
                 let history = directory.path().join("requests.jsonl");
                 let log = Arc::new(Mutex::new(RequestLog::open(&history).unwrap()));
                 let state = Arc::new(AppState {
-                    agents: None,
                     config: ConfigStore::new(config, None),
                     http: upstream::http_client().unwrap(),
                     requests: log.clone(),
@@ -5451,7 +5454,6 @@ mod tests {
         solo.max_rpm = Some(1);
         solo.queue_wait_s = Some(120);
         let state = Arc::new(AppState {
-            agents: None,
             config: ConfigStore::new(
                 Config {
                     provider: vec![solo],
@@ -5496,7 +5498,6 @@ mod tests {
     /// after routing and no upstream is contacted.
     fn decode_counting_state() -> Arc<AppState> {
         Arc::new(AppState {
-            agents: None,
             config: ConfigStore::new(Config::default(), None),
             http: upstream::http_client().unwrap(),
             requests: Arc::new(Mutex::new(crate::usage::RequestLog::default())),

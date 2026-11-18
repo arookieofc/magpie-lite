@@ -133,7 +133,6 @@ async fn custom_tool_input_streams_before_the_upstream_call_finishes() {
     let home = tempfile::tempdir().unwrap();
     let history = home.path().join("history.jsonl");
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(
             Config {
                 token: TOKEN.into(),

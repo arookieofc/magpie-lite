@@ -165,7 +165,6 @@ async fn gateway_routed(
         }],
     };
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(RequestLog::default())),
@@ -499,7 +498,6 @@ async fn gateway_with_fallback(
         group: Vec::new(),
     };
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(RequestLog::default())),

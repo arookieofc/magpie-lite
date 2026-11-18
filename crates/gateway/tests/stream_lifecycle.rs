@@ -346,7 +346,6 @@ impl Fixture {
         config.save(&config_path).unwrap();
         let log = Arc::new(Mutex::new(RequestLog::default()));
         let state = Arc::new(AppState {
-            agents: None,
             config: ConfigStore::new(config, Some(config_path)),
             http: magpie_gateway::upstream::http_client().unwrap(),
             requests: log.clone(),

@@ -196,7 +196,6 @@ impl Fixture {
         config.set_provider(provider, true).unwrap();
         config.save(&path).unwrap();
         let state = Arc::new(AppState {
-            agents: None,
             config: ConfigStore::new(config, Some(path)),
             http: magpie_gateway::upstream::http_client().unwrap(),
             requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -455,7 +454,6 @@ async fn tools_require_authentication_validate_before_network_and_need_no_persis
     assert!(f.mock.seen.lock().unwrap().is_empty());
     let config = f.state.config.current().clone();
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),

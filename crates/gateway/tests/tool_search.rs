@@ -418,7 +418,6 @@ async fn fixture(protocol: Protocol) -> Fixture {
         RequestLog::open(&home.path().join("history.jsonl")).unwrap(),
     ));
     let gateway = serve(build_router(Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: log,

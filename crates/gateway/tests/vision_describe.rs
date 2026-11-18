@@ -185,7 +185,6 @@ async fn fixture(vision: Option<&str>, fail_describe: bool) -> Fixture {
     };
     let log = Arc::new(Mutex::new(RequestLog::open(&history).unwrap()));
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: log,
@@ -331,7 +330,6 @@ async fn vision_http_names_with_revision_and_idempotency() {
     let store = ConfigStore::new(Config::load(&path).unwrap(), Some(path.clone()));
     let log = Arc::new(Mutex::new(RequestLog::open(&history).unwrap()));
     let state = Arc::new(AppState {
-        agents: None,
         config: store,
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: log,

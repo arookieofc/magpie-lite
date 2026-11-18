@@ -108,7 +108,6 @@ async fn gateway(referenced: bool) -> Gateway {
     };
     config.save(&path).unwrap();
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, Some(path.clone())),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -711,7 +710,6 @@ async fn gateway_with_shared_model() -> Gateway {
     };
     config.save(&path).unwrap();
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, Some(path.clone())),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -947,7 +945,6 @@ async fn found_groups_off_serves_the_first_seat_but_lists_nothing() {
     };
     config.save(&path).unwrap();
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, Some(path.clone())),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -1055,7 +1052,6 @@ async fn a_bare_model_id_reaches_its_found_group() {
     };
     config.save(&path).unwrap();
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, Some(path.clone())),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -1143,7 +1139,6 @@ async fn vendors_spelling_one_model_apart_share_one_served_group() {
     };
     config.save(&path).unwrap();
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, Some(path.clone())),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -1604,7 +1599,6 @@ async fn found_group_request_level_round_trip() {
     };
     config.save(&path).unwrap();
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, Some(path.clone())),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -1763,7 +1757,6 @@ async fn patient_gateway(patience_s: Option<i64>, hold: Duration) -> (String, Ar
         ..Config::default()
     };
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -1999,7 +1992,6 @@ async fn flaky_gateway(
         ..Config::default()
     };
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
@@ -2275,7 +2267,6 @@ async fn a_mixed_final_and_transient_round_stands_without_replan() {
         ..Config::default()
     };
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),

@@ -224,7 +224,6 @@ async fn fixture(protocol: Protocol, mode: Mode) -> Fixture {
     };
     let log = Arc::new(Mutex::new(RequestLog::open(&history).unwrap()));
     let gateway = serve(build_router(Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(
             Config {
                 token: TOKEN.into(),

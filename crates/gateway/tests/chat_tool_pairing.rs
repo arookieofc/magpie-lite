@@ -281,7 +281,6 @@ async fn fixture() -> Fixture {
     };
     let log = Arc::new(Mutex::new(RequestLog::open(&history).unwrap()));
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: log.clone(),

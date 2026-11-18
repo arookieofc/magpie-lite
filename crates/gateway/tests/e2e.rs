@@ -346,7 +346,6 @@ async fn spawn_gateway_with_providers_and_groups(
     };
     let requests = request_log(&config);
     let state = Arc::new(AppState {
-        agents: None,
         config: magpie_gateway::ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests,
@@ -1546,7 +1545,6 @@ async fn spawn_zen_pair(replies: Vec<(u16, Value)>) -> (String, Arc<Mutex<usize>
     };
     let requests_state = request_log(&config);
     let state = Arc::new(AppState {
-        agents: None,
         config: magpie_gateway::ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: requests_state,
@@ -1994,7 +1992,6 @@ async fn spawn_gateway_with_key_pool(primary: String, backup: Option<String>) ->
     };
     let requests = request_log(&config);
     let state = Arc::new(AppState {
-        agents: None,
         config: magpie_gateway::ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests,
@@ -2099,7 +2096,6 @@ async fn spawn_gateway_with_fallback_named(
     };
     let requests = request_log(&config);
     let state = Arc::new(AppState {
-        agents: None,
         config: magpie_gateway::ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests,
@@ -2181,7 +2177,6 @@ async fn spawn_gateway_with_same_provider_group(upstream: String) -> String {
     };
     let requests = request_log(&config);
     let state = Arc::new(AppState {
-        agents: None,
         config: magpie_gateway::ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests,
@@ -2322,7 +2317,6 @@ async fn spawn_gateway_with_group_routes(
     };
     let requests = request_log(&config);
     let state = Arc::new(AppState {
-        agents: None,
         config: magpie_gateway::ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests,
@@ -3424,7 +3418,7 @@ async fn model_routes_require_the_exact_local_token() {
         body["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("invalid magpie-lite token")
+            .contains("missing or invalid gateway token")
     );
 
     let wrong_gemini = client
@@ -3570,7 +3564,6 @@ async fn spawn_gateway_with_models(
     };
     let requests = request_log(&config);
     let state = Arc::new(AppState {
-        agents: None,
         config: magpie_gateway::ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests,

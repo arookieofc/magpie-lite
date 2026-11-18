@@ -213,7 +213,6 @@ fn provider(protocol: Protocol, url: String, model: &str) -> ProviderConfig {
 
 async fn gateway(p: ProviderConfig) -> Server {
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(
             Config {
                 token: TOKEN.into(),

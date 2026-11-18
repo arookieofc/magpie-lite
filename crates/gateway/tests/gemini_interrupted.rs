@@ -165,7 +165,6 @@ async fn fixture() -> Fixture {
         ..Config::default()
     };
     let gateway_app = build_router(Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(RequestLog::default())),

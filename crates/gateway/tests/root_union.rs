@@ -161,7 +161,6 @@ impl Fixture {
         }))
         .await;
         let state = Arc::new(AppState {
-            agents: None,
             config: ConfigStore::new(
                 Config {
                     token: TOKEN.into(),

@@ -236,7 +236,6 @@ impl Fixture {
             upstreams.push(server);
         }
         let state = Arc::new(AppState {
-            agents: None,
             config: ConfigStore::new(
                 Config {
                     token: TOKEN.into(),

@@ -101,7 +101,6 @@ async fn gateway(status: u16, body: Value) -> Gateway {
         ..Config::default()
     };
     let state = Arc::new(AppState {
-        agents: None,
         config: ConfigStore::new(config, None),
         http: magpie_gateway::upstream::http_client().unwrap(),
         requests: Arc::new(Mutex::new(magpie_gateway::usage::RequestLog::default())),
