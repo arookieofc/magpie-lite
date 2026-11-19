@@ -424,15 +424,8 @@ async fn response_byte_model_page_and_cursor_limits_are_enforced() {
 }
 
 #[tokio::test]
-async fn tools_require_authentication_validate_before_network_and_need_no_persistence_path() {
+async fn tools_validate_before_network_and_need_no_persistence_path() {
     let f = Fixture::new().await;
-    let response = reqwest::Client::new()
-        .post(format!("{}/config/provider-tools/models", f.url))
-        .json(&json!({"provider":f.draft("chat","/v1")}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     let mut draft = f.draft("chat", "/v1");
     draft["base_url"] = json!("http://SECRET@localhost/v1");
     assert_eq!(

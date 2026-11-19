@@ -24,9 +24,10 @@ import ProviderConfig from "./components/ProviderConfig";
 import Groups from "./components/Groups";
 import Models from "./components/Models";
 import UsageByModel from "./components/UsageByModel";
+import Chat from "./components/Chat";
 import { PageHeader } from "./components/ui";
 
-const VIEWS: View[] = ["overview", "gateway", "providers", "groups", "requests"];
+const VIEWS: View[] = ["overview", "gateway", "providers", "groups", "requests", "chat"];
 const THEME_KEY = "magpie-theme";
 const COLLAPSE_KEY = "magpie-sidenav-collapsed";
 
@@ -70,9 +71,6 @@ export interface StatsRange {
 
 export default function App() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
-  const [localToken, setLocalToken] = useState(() => {
-    try { return sessionStorage.getItem("magpie-local-token") ?? ""; } catch { return ""; }
-  });
   const [data, setData] = useState<GatewayData>({
     stats: null,
     models: null,
@@ -94,6 +92,7 @@ export default function App() {
   const meta = {
     overview: { title: t("view.overviewTitle"), subtitle: t("view.overviewSub") },
     requests: { title: t("view.requestsTitle"), subtitle: t("view.requestsSub") },
+    chat: { title: t("view.chatTitle"), subtitle: t("view.chatSub") },
     gateway: { title: t("view.gatewayTitle"), subtitle: t("view.gatewaySub") },
     providers: { title: t("view.providersTitle"), subtitle: t("view.providersSub") },
     groups: { title: t("view.groupsTitle"), subtitle: t("view.groupsSub") },
@@ -267,6 +266,7 @@ export default function App() {
         badge: recent.length ? String(recent.length) : undefined,
         alert: recentErrors > 0,
       },
+      { id: "chat", labelKey: "nav.chat" },
       { id: "gateway", labelKey: "nav.gateway" },
       {
         id: "providers",
@@ -279,32 +279,8 @@ export default function App() {
 
   const refreshAll = () => update(false);
 
-  useEffect(() => {
-    try {
-      if (localToken) sessionStorage.setItem("magpie-local-token", localToken);
-      else sessionStorage.removeItem("magpie-local-token");
-    } catch { /* storage unavailable */ }
-  }, [localToken]);
-
-  useEffect(() => {
-    api.setLocalToken(localToken);
-  }, [localToken]);
-
-  useEffect(() => {
-    api.setUnauthorizedHandler(() => setLocalToken(""));
-  }, []);
-
   if (!isLoopbackHost(window.location.hostname)) {
     return <main className="access-denied"><ShieldCheck size={28} /><h1>Local access only</h1><p>The Magpie console is designed for a loopback connection. Open it from this computer at <code>127.0.0.1</code>.</p></main>;
-  }
-
-  if (!localToken) {
-    return <main className="token-gate"><form className="token-card" onSubmit={(event) => { event.preventDefault(); const value = String(new FormData(event.currentTarget).get("token") ?? "").trim(); if (value) setLocalToken(value); }}>
-      <div className="token-brand"><span className="brand-mark"><span>m</span></span><span><b>magpie</b><small>LOCAL GATEWAY</small></span></div>
-      <p className="eyebrow">CONTROL PLANE</p><h1>Welcome back</h1><p className="token-copy">Enter the local gateway token from your Magpie configuration to open the console.</p>
-      <label htmlFor="gateway-token">Gateway token</label><input id="gateway-token" name="token" type="password" autoComplete="current-password" autoFocus required placeholder="Enter your local token" />
-      <button type="submit" className="btn primary">Open console</button><p className="token-foot"><ShieldCheck size={14} /> Your token stays in this browser session.</p>
-    </form></main>;
   }
 
   return (
@@ -369,7 +345,7 @@ export default function App() {
             ))}
           </datalist>
 
-          <section className="view" hidden={view !== "overview"} aria-label="Overview">
+          <section className="view view-overview" hidden={view !== "overview"} aria-label="Overview">
             <PageHeader
               title={t("page.overviewTitle")}
               subtitle={t("page.overviewSub")}
@@ -398,6 +374,14 @@ export default function App() {
               <ShieldCheck size={14} aria-hidden="true" />
               {t("page.secretNote")}
             </p>
+          </section>
+
+          <section className="view" hidden={view !== "chat"} aria-label={t("page.chatTitle")}>
+            <PageHeader
+              title={t("page.chatTitle")}
+              subtitle={t("page.chatSub")}
+            />
+            <Chat models={data.models} config={data.config} />
           </section>
 
           <section className="view" hidden={view !== "providers"} aria-label={t("page.providersTitle")}>

@@ -7,11 +7,12 @@ import {
   ScrollText,
   Server,
   Waypoints,
+  MessagesSquare,
   type LucideIcon,
 } from "lucide-react";
 import { useT, type DictKey } from "../i18n";
 
-export type View = "overview" | "gateway" | "providers" | "groups" | "requests";
+export type View = "overview" | "gateway" | "providers" | "groups" | "requests" | "chat";
 export type ThemeChoice = "system" | "light" | "dark";
 
 export interface NavItem {
@@ -24,6 +25,7 @@ export interface NavItem {
 const ICONS: Record<View, LucideIcon> = {
   overview: LayoutDashboard,
   requests: ScrollText,
+  chat: MessagesSquare,
   gateway: Network,
   providers: Server,
   groups: Waypoints,
@@ -31,7 +33,7 @@ const ICONS: Record<View, LucideIcon> = {
 
 /* Astryx SideNav grouping: Monitor pages vs Configure pages. */
 const SECTIONS: { headingKey: DictKey; ids: View[] }[] = [
-  { headingKey: "nav.monitor", ids: ["overview", "requests"] },
+  { headingKey: "nav.monitor", ids: ["overview", "requests", "chat"] },
   { headingKey: "nav.configure", ids: ["gateway", "providers", "groups"] },
 ];
 
