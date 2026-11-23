@@ -3273,12 +3273,13 @@ async fn history_survives_restart_without_conversation_or_credentials() {
     assert!(!persisted.contains("magpie-lite"));
 
     let second_gateway = spawn_gateway_with_history(upstream, history_path.clone()).await;
-    let no_auth_stats = client
+    let unauthorized = client
         .get(format!("{second_gateway}/stats"))
+        .bearer_auth("not-the-token")
         .send()
         .await
         .unwrap();
-    assert_eq!(no_auth_stats.status(), StatusCode::OK);
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
     let stats = client
         .get(format!("{second_gateway}/stats"))
@@ -3378,7 +3379,7 @@ async fn gateway_is_api_only_while_health_is_public() {
     }
 
     let config = client.get(format!("{gw}/config")).send().await.unwrap();
-    assert_eq!(config.status(), StatusCode::OK);
+    assert_eq!(config.status(), StatusCode::UNAUTHORIZED);
 
     let config = client
         .get(format!("{gw}/config"))
@@ -3393,15 +3394,15 @@ async fn gateway_is_api_only_while_health_is_public() {
     assert_eq!(config["providers"][0]["key_count"], 1);
     assert!(!config.to_string().contains("test-key"));
     let stats = client.get(format!("{gw}/stats")).send().await.unwrap();
-    assert_eq!(stats.status(), StatusCode::OK);
+    assert_eq!(stats.status(), StatusCode::UNAUTHORIZED);
 }
 #[tokio::test]
-async fn model_routes_serve_without_a_token() {
+async fn model_routes_require_the_exact_local_token() {
     let (upstream, last) = spawn_mock().await;
     let gw = spawn_gateway(upstream).await;
     let client = reqwest::Client::new();
 
-    let chat = client
+    let missing = client
         .post(format!("{gw}/v1/chat/completions"))
         .json(&json!({
             "model": "mock/mock-model",
@@ -3410,21 +3411,32 @@ async fn model_routes_serve_without_a_token() {
         .send()
         .await
         .unwrap();
-    assert_eq!(chat.status(), StatusCode::OK);
+    assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+    let body: Value = missing.json().await.unwrap();
+    assert_eq!(body["error"]["code"], 401);
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("missing or invalid gateway token")
+    );
 
-    let gemini = client
+    let wrong_gemini = client
         .post(format!(
             "{gw}/v1beta/models/mock/mock-model:generateContent"
         ))
+        .header("x-goog-api-key", "not-the-token")
         .json(&json!({
             "contents": [{"role": "user", "parts": [{"text": "Weather?"}]}]
         }))
         .send()
         .await
         .unwrap();
-    assert_eq!(gemini.status(), StatusCode::OK);
+    assert_eq!(wrong_gemini.status(), StatusCode::UNAUTHORIZED);
+    let body: Value = wrong_gemini.json().await.unwrap();
+    assert_eq!(body["error"]["status"], "PERMISSION_DENIED");
 
-    assert!(last.lock().unwrap().is_some());
+    assert!(last.lock().unwrap().is_none());
 }
 
 #[tokio::test]

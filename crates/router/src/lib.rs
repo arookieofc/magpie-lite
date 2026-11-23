@@ -28,6 +28,7 @@ pub mod reply_room;
 pub mod retired;
 pub mod roomy;
 pub mod rules;
+pub mod secrets;
 pub mod serves;
 pub mod stream_empty;
 pub mod stream_keepalive;

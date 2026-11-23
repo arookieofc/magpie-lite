@@ -118,7 +118,26 @@ fn save_idempotency(path: &Path, ledger: &IdempotencyLedger) -> Result<(), Confi
             "could not save idempotency ledger; no changes applied".to_owned(),
         )
     })?;
+    restrict_secret_file(&path);
     Ok(())
+}
+
+/// Owner-only hardening for the secret-adjacent idempotency ledger on Unix.
+/// The ledger is secret-free (digests only), but it sits beside credentials,
+/// so it inherits the same file-mode policy. Windows ACL work waits for an
+/// OS-native secret store.
+fn restrict_secret_file(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(error) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+            tracing::warn!(%error, path = %path.display(), "could not restrict ledger permissions");
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
 fn lock_is_contended(error: &std::io::Error) -> bool {
     error.kind() == std::io::ErrorKind::WouldBlock

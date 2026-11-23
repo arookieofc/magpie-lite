@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
+use axum::middleware::{self, Next};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -120,7 +121,47 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/config/found-groups", put(update_found_groups))
         .route("/config/vision", put(update_vision))
         .route("/health", get(health))
+        .layer(middleware::from_fn_with_state(state.clone(), authenticate))
         .with_state(state)
+}
+
+async fn authenticate(
+    State(state): State<Arc<AppState>>,
+    request: axum::http::Request<Body>,
+    next: Next,
+) -> Response {
+    if matches!(request.uri().path(), "/health") {
+        return next.run(request).await;
+    }
+
+    let supplied = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .or_else(|| request.headers().get("x-api-key").and_then(|value| value.to_str().ok()))
+        .or_else(|| request.headers().get("x-goog-api-key").and_then(|value| value.to_str().ok()));
+    let expected = state.config.current().token;
+    let authorized = supplied.is_some_and(|value| {
+        use subtle::ConstantTimeEq;
+        value.as_bytes().ct_eq(expected.as_bytes()).into()
+    });
+    if authorized {
+        next.run(request).await
+    } else {
+        let message = "missing or invalid gateway token";
+        let body = match request.uri().path() {
+            path if path.starts_with("/v1beta/") => upstream::gemini_error_reason(
+                StatusCode::UNAUTHORIZED,
+                message,
+                "PERMISSION_DENIED",
+            ),
+            "/v1/messages" => upstream::anthropic_error(StatusCode::UNAUTHORIZED, message),
+            "/v1/responses" => upstream::responses_error(StatusCode::UNAUTHORIZED, message),
+            _ => upstream::chat_error(StatusCode::UNAUTHORIZED, message),
+        };
+        err_response(StatusCode::UNAUTHORIZED, body)
+    }
 }
 
 /// Run the gateway until the process is stopped.

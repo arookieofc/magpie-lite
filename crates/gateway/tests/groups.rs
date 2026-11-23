@@ -297,9 +297,22 @@ async fn group_crud_persists_and_changes_catalog_and_upstream_without_restart() 
 }
 
 #[tokio::test]
-async fn edits_reject_invalid_input_without_changing_disk() {
+async fn edits_require_token_and_reject_invalid_input_without_changing_disk() {
     let gw = gateway(false).await;
     let original = std::fs::read(&gw.path).unwrap();
+    for (method, path) in [
+        (Method::POST, "/config/groups"),
+        (Method::PUT, "/config/groups/daily"),
+        (Method::DELETE, "/config/groups/daily"),
+    ] {
+        let response = Client::new()
+            .request(method, format!("{}{path}", gw.url))
+            .json(&group("daily", "test"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
     let response = Client::new()
         .post(format!("{}/config/groups", gw.url))
         .bearer_auth("magpie-lite")

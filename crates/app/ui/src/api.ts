@@ -1,3 +1,14 @@
+let localToken = "";
+let onUnauthorized: (() => void) | undefined;
+
+export function setLocalToken(value: string): void {
+  localToken = value;
+}
+
+export function setUnauthorizedHandler(handler: () => void): void {
+  onUnauthorized = handler;
+}
+
 export async function request<T = unknown>(
   path: string,
   method = "GET",
@@ -7,6 +18,7 @@ export async function request<T = unknown>(
     method,
     headers: {
       ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(localToken ? { authorization: `Bearer ${localToken}` } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
@@ -19,6 +31,7 @@ export async function request<T = unknown>(
     payload = text as T & { error?: { message?: string } };
   }
   if (!response.ok) {
+    if (response.status === 401) onUnauthorized?.();
     const message = (payload as { error?: { message?: string } })?.error?.message
       ?? `Request failed (HTTP ${response.status}).`;
     throw new Error(message);

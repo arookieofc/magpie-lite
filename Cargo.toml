@@ -30,5 +30,7 @@ toml_edit = "0.22"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 fs2 = "0.4"
+chacha20poly1305 = "0.10"
+getrandom = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

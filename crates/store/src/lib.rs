@@ -16,7 +16,10 @@ use rusqlite::{Connection, params};
 /// How many request rows are kept on disk: headroom above the recent
 /// window the console serves, so restarts still show a full page.
 const KEEP_REQUESTS: u64 = 5_000;
-const SCHEMA_VERSION: &str = "1";
+/// Current `magpie.db` schema version, stored in `kv.schema_version`.
+/// Bump alongside a new `migrate_step`, never in place: `open` refuses
+/// a newer version instead of guessing, and migrates older ones forward.
+const CURRENT_SCHEMA_VERSION: i64 = 1;
 
 /// The database file for a resolved config location: `magpie.db` in the
 /// same directory as the config, so config, affinity and history travel
@@ -28,10 +31,63 @@ pub fn default_db_path(config_path: &Path) -> PathBuf {
     }
 }
 
+/// Restrict a secret-adjacent file to owner-only access on Unix.
+/// The history DB carries metadata only, but it sits beside the config
+/// and affinity state, so it gets the same hardening. Windows ACL work
+/// waits for an OS-native secret store.
+fn restrict_secret_file(path: &Path) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
 /// An open `magpie.db`. Cheap to share behind the request log's lock:
 /// every method takes `&self` and serializes on the connection.
 pub struct Store {
     conn: Mutex<Connection>,
+}
+
+/// Read the stored schema version. Missing or damaged means pre-versioned
+/// (`0`): the base tables above already exist, so migration just stamps
+/// the current version without touching rows.
+fn stored_schema_version(conn: &Connection) -> anyhow::Result<i64> {
+    let mut stmt = conn.prepare("SELECT v FROM kv WHERE k = 'schema_version'")?;
+    let mut rows = stmt.query([])?;
+    match rows.next()? {
+        None => Ok(0),
+        Some(row) => {
+            let raw: String = row.get(0)?;
+            Ok(raw.parse::<i64>().unwrap_or(0))
+        }
+    }
+}
+
+/// Bring `conn` to [`CURRENT_SCHEMA_VERSION`]. New steps plug in as
+/// `version == N` arms; a newer on-disk version is a hard error so an
+/// old binary never misreads a new schema.
+fn migrate_schema(conn: &Connection) -> anyhow::Result<i64> {
+    let mut version = stored_schema_version(conn)?;
+    if version > CURRENT_SCHEMA_VERSION {
+        anyhow::bail!(
+            "unsupported magpie.db schema version {version} (this binary knows {CURRENT_SCHEMA_VERSION})"
+        );
+    }
+    while version < CURRENT_SCHEMA_VERSION {
+        version += 1;
+    }
+    conn.execute(
+        "INSERT INTO kv(k, v) VALUES ('schema_version', ?1)
+         ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+        params![CURRENT_SCHEMA_VERSION.to_string()],
+    )?;
+    Ok(CURRENT_SCHEMA_VERSION)
 }
 
 impl std::fmt::Debug for Store {
@@ -53,6 +109,7 @@ impl Store {
         let conn = Connection::open(path)
             .with_context(|| format!("could not open {}", path.display()))?;
         conn.busy_timeout(Duration::from_secs(5))?;
+        restrict_secret_file(path)?;
         // WAL keeps readers (the console's /stats poll) from blocking on
         // the write that lands when each request finishes.
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -72,10 +129,10 @@ impl Store {
                 v TEXT NOT NULL
             );",
         )?;
+        migrate_schema(&conn)?;
         let store = Self {
             conn: Mutex::new(conn),
         };
-        store.kv_set("schema_version", SCHEMA_VERSION)?;
         store.prune(KEEP_REQUESTS)?;
         Ok(store)
     }
@@ -283,6 +340,95 @@ mod tests {
         // A damaged time or body reads as no snapshot, never an error.
         store.kv_set("affinity_updated_ms", "not-a-number").unwrap();
         assert_eq!(store.get_affinity_snapshot().unwrap(), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn fresh_db_stamps_current_schema_version() {
+        let path = temp_db("schema-fresh");
+        let store = Store::open(&path).unwrap();
+        assert_eq!(
+            store.kv_get("schema_version").unwrap().as_deref(),
+            Some("1")
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_db_without_version_migrates_without_losing_rows() {
+        let path = temp_db("schema-legacy");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE requests(id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_ms INTEGER NOT NULL, provider TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '', input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL);
+                 CREATE TABLE kv(k TEXT PRIMARY KEY, v TEXT NOT NULL);
+                 INSERT INTO requests(started_ms, provider, status, input_tokens, output_tokens, body)
+                 VALUES (42, 'acme', 'ok', 1, 2, '{\"seq\":0}');",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(
+            store.kv_get("schema_version").unwrap().as_deref(),
+            Some("1")
+        );
+        assert_eq!(store.load_recent(10).unwrap().len(), 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn damaged_schema_version_migrates_forward() {
+        let path = temp_db("schema-damaged");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE requests(id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_ms INTEGER NOT NULL, provider TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '', input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL);
+                 CREATE TABLE kv(k TEXT PRIMARY KEY, v TEXT NOT NULL);
+                 INSERT INTO kv(k, v) VALUES ('schema_version', 'not-a-number');",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(
+            store.kv_get("schema_version").unwrap().as_deref(),
+            Some("1")
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn newer_schema_version_refuses_to_open() {
+        let path = temp_db("schema-newer");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE requests(id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_ms INTEGER NOT NULL, provider TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '', input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0, body TEXT NOT NULL);
+                 CREATE TABLE kv(k TEXT PRIMARY KEY, v TEXT NOT NULL);
+                 INSERT INTO kv(k, v) VALUES ('schema_version', '999');",
+            )
+            .unwrap();
+        }
+        assert!(Store::open(&path).is_err());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn db_file_is_owner_only_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = temp_db("schema-perms");
+        let _store = Store::open(&path).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "magpie.db should be owner-only, got {mode:o}");
         let _ = std::fs::remove_file(&path);
     }
 }

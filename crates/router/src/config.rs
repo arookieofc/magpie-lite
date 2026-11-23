@@ -1915,6 +1915,23 @@ impl Config {
         file.write_all(text.as_bytes())?;
         file.as_file().sync_all()?;
         file.persist(path)?;
+        Self::restrict_secret_file(path)?;
+        Ok(())
+    }
+
+    /// Restrict a secret-bearing file to owner-only access on Unix.
+    /// Windows ACL hardening is out of scope: the default inherited ACL
+    /// applies there until an OS-native secret store lands.
+    fn restrict_secret_file(path: &std::path::Path) -> anyhow::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+        }
         Ok(())
     }
 
@@ -4210,5 +4227,17 @@ mod loop_guard_config_tests {
         );
         assert!(toml::from_str::<Config>("stream_loop_guard = 0").is_err());
         assert!(toml::from_str::<Config>("stream_loop_guard = \"false\"").is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn saved_config_is_owner_only_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        Config::default().save_with_revision(&path, 1).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "config.toml should be owner-only, got {mode:o}");
+        assert_eq!(Config::persisted_revision(&path).unwrap(), 1);
     }
 }

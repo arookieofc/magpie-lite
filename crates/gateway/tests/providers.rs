@@ -844,8 +844,25 @@ async fn deletes_reject_group_and_fallback_references_and_reassign_default() {
 }
 
 #[tokio::test]
-async fn validation_conflicts_and_external_edits_leave_config_unchanged() {
+async fn authentication_validation_conflicts_and_external_edits_leave_config_unchanged() {
     let gw = gateway().await;
+    for method in [Method::POST, Method::PUT, Method::DELETE] {
+        let path = if method == Method::POST {
+            "/config/providers"
+        } else {
+            "/config/providers/mock"
+        };
+        assert_eq!(
+            Client::new()
+                .request(method, format!("{}{path}", gw.url))
+                .json(&provider(&gw, "mock"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
     for (field, value) in [
         ("id", json!("group")),
         ("id", json!("with/slash")),

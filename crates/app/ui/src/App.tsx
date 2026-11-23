@@ -71,6 +71,9 @@ export interface StatsRange {
 
 export default function App() {
   const [healthy, setHealthy] = useState<boolean | null>(null);
+  const [localToken, setLocalToken] = useState(() => {
+    try { return sessionStorage.getItem("magpie-local-token") ?? ""; } catch { return ""; }
+  });
   const [data, setData] = useState<GatewayData>({
     stats: null,
     models: null,
@@ -279,8 +282,32 @@ export default function App() {
 
   const refreshAll = () => update(false);
 
+  useEffect(() => {
+    try {
+      if (localToken) sessionStorage.setItem("magpie-local-token", localToken);
+      else sessionStorage.removeItem("magpie-local-token");
+    } catch { /* storage unavailable */ }
+  }, [localToken]);
+
+  useEffect(() => {
+    api.setLocalToken(localToken);
+  }, [localToken]);
+
+  useEffect(() => {
+    api.setUnauthorizedHandler(() => setLocalToken(""));
+  }, []);
+
   if (!isLoopbackHost(window.location.hostname)) {
     return <main className="access-denied"><ShieldCheck size={28} /><h1>Local access only</h1><p>The Magpie console is designed for a loopback connection. Open it from this computer at <code>127.0.0.1</code>.</p></main>;
+  }
+
+  if (!localToken) {
+    return <main className="token-gate"><form className="token-card" onSubmit={(event) => { event.preventDefault(); const value = String(new FormData(event.currentTarget).get("token") ?? "").trim(); if (value) setLocalToken(value); }}>
+      <div className="token-brand"><span className="brand-mark"><span>m</span></span><span><b>magpie</b><small>LOCAL GATEWAY</small></span></div>
+      <p className="eyebrow">CONTROL PLANE</p><h1>Welcome back</h1><p className="token-copy">Enter the local gateway token from your Magpie configuration to open the console.</p>
+      <label htmlFor="gateway-token">Gateway token</label><input id="gateway-token" name="token" type="password" autoComplete="current-password" autoFocus required placeholder="Enter your local token" />
+      <button type="submit" className="btn primary">Open console</button><p className="token-foot"><ShieldCheck size={14} /> Your token stays in this browser session.</p>
+    </form></main>;
   }
 
   return (
