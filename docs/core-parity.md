@@ -1,6 +1,6 @@
 # Core parity tracker
 
-Updated: 2026-10-26. Reference checkout: `D:\code\magpie` at `49f15d124`;
+Updated: 2026-11-23 (local security hardening `5ed5dfa`; see the last section). Reference checkout: `D:\code\magpie` at `49f15d124`;
 `origin/main` triaged through `49f15d124` (thirty-fourth pass: fetched
 `origin/main` at `49f15d124`; twelve commits `098ac969..49f15d124` are PII/GUI/plugin/sync/OTel/site/docs with no core routing to port; this increment honors Responses Agent event-idle (`told`/`tooQuiet`/`agentQuietMost`): only streaming Responses clients, request-start clock, encoded events reset it, comments/held frames do not, replan/retry pauses that would cross the boundary return the current failure, and expiry releases a real buffered opening without fabricating events; thirty-third pass: fetched
 `origin/main` at `098ac969` and ported `de281760e` — after eight consecutive
@@ -1456,3 +1456,54 @@ partition inverted), the unit test and the loopback both go red with the
 paid member asked first. `cargo fmt`, `cargo clippy --workspace
 --all-targets -- -D warnings` and `cargo test --workspace` are green (59
 result lines, 0 failures).
+
+### Local security hardening (2026-11-23, `5ed5dfa`, not an upstream port)
+
+No upstream triage in this increment; it repairs a self-inflicted gateway
+regression and starts the Management-security row's remaining work
+(encrypted secret storage, schema migration).
+
+- Auth restored: `f7bcce8` had dropped the Bearer-token gate to ship the
+  console Chat view. `crates/gateway/src/server.rs` regains the
+  `authenticate` middleware (`/health` stays public, protocol-specific
+  401 shapes kept); `crates/app/ui/src/api.ts` regains `setLocalToken`
+  plus the `Authorization: Bearer` header and 401 logout, `App.tsx`
+  regains the session token gate, and the Chat view keeps working through
+  `post()` because the token now rides along. The four gateway test files
+  return to 401 expectations (`model_routes_require_the_exact_local_token`,
+  `gateway_is_api_only_while_health_is_public`,
+  `edits_require_token_and_reject_invalid_input_without_changing_disk`,
+  `authentication_validation_conflicts_and_external_edits_leave_config_unchanged`,
+  `tools_require_authentication_validate_before_network_and_need_no_persistence_path`).
+- `magpie.db` versioning: `crates/store/src/lib.rs` replaces the blind
+  `kv_set("schema_version", "1")` with `stored_schema_version` plus
+  `migrate_schema` — missing/damaged reads as pre-versioned `0` and is
+  stamped forward without touching rows, a newer on-disk version is a hard
+  error. Four new tests (fresh stamp, legacy migration preserving rows,
+  damaged migration, newer-version refusal).
+- Owner-only hardening on Unix (`0o600`; Windows keeps inherited ACLs):
+  `Config::save_with_revision`, `Store::open`, and the idempotency-ledger
+  writer each restrict their file after writing, with a Unix-only mode
+  test on the router and store sides (compiled but skipped on Windows).
+- Machine-bound secrets, storage only: `crates/router/src/secrets.rs`
+  keeps `{token, api_keys}` in `~/magpie-lite/secrets.enc`, encrypted with
+  ChaCha20Poly1305 under `SHA256("magpie-lite-secrets-v1" || machine-id)`.
+  The machine id comes from `MachineGuid` (Windows), `/etc/machine-id`
+  (Linux), or `IOPlatformUUID` (macOS), with a `fallback:host:user` last
+  resort and an error when nothing is available — never a constant key. A
+  copy moved to another machine fails authentication instead of
+  decrypting. Seven tests (round trip, missing file, cross-machine
+  refusal, tamper, empty-machine refusal, home-dir path, Unix perms).
+  The gateway still reads plaintext `config.toml`; migration wiring and a
+  recovery path are the next increment, deliberately left out here so no
+  live credential can be locked out.
+
+Evidence: `cargo test -p magpie-router --lib` 229 passed,
+`cargo test -p magpie-store --lib` 9 passed,
+`cargo test -p magpie-gateway --test e2e` 50 passed. Two failures reproduce
+on the clean tree and are pre-existing, not regressions:
+`magpie-core` `explicit_chat_call_indexes_drive_missing_fragments` and
+`magpie-gateway --test namespaces` `namespaces_survive_four_upstreams`.
+Still open after this increment: secrets migration wiring plus recovery,
+versioned API, cost/quota aggregates, and the protocol evidence gaps the
+table already lists.
