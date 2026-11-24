@@ -283,7 +283,7 @@ impl ConfigStore {
             let mut next = current.clone();
             change(&mut next)?;
             // Avoid overwriting edits made by the CLI or another gateway instance.
-            let disk = Config::load(path).map_err(|_| {
+            let disk = Config::load_merged(path).map_err(|_| {
                 (
                     StatusCode::CONFLICT,
                     "configuration file cannot be read; restart the gateway after fixing it"
@@ -297,8 +297,16 @@ impl ConfigStore {
                         .to_owned(),
                 )
             })?;
+            // Compare canonicalized shapes: on-disk secrets live in the
+            // sibling blob (legacy `api_key` canonicalized into `api_keys`)
+            // while the in-memory copy may still carry the TOML field
+            // placement, so a raw string comparison would false-positive on
+            // every edit after the first migration.
+            let (disk_metadata, disk_secrets) = disk.split_secrets();
+            let (current_metadata, current_secrets) = current.split_secrets();
             if disk_revision != current_revision
-                || toml::to_string(&disk).ok() != toml::to_string(&current).ok()
+                || toml::to_string(&disk_metadata).ok() != toml::to_string(&current_metadata).ok()
+                || disk_secrets != current_secrets
             {
                 return Err((
                     StatusCode::CONFLICT,
@@ -306,7 +314,7 @@ impl ConfigStore {
                 ));
             }
             let revision = current_revision.saturating_add(1);
-            next.save_with_revision(path, revision).map_err(|error| {
+            next.save_merged(path, revision).map_err(|error| {
                 tracing::error!(%error, "could not persist configuration");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -414,7 +422,7 @@ impl ConfigStore {
             }
             let mut next = current.clone();
             change(&mut next)?;
-            let disk = Config::load(path).map_err(|_| {
+            let disk = Config::load_merged(path).map_err(|_| {
                 (
                     StatusCode::CONFLICT,
                     "configuration file cannot be read; restart the gateway after fixing it"
@@ -428,8 +436,15 @@ impl ConfigStore {
                         .to_owned(),
                 )
             })?;
+            // Compare canonicalized shapes: on-disk secrets live in the
+            // sibling blob (see above), so compare the split metadata and
+            // secrets instead of the raw TOML strings.
+            let (disk_metadata, disk_secrets) = disk.split_secrets();
+            let (current_metadata, current_secrets) = current.split_secrets();
             if disk_revision != current_revision
-                || toml::to_string(&disk).ok() != toml::to_string(&current).ok()
+                || toml::to_string(&disk_metadata).ok()
+                    != toml::to_string(&current_metadata).ok()
+                || disk_secrets != current_secrets
             {
                 return Err((
                     StatusCode::CONFLICT,
@@ -447,7 +462,7 @@ impl ConfigStore {
             save_idempotency(path, &ledger)?;
 
             let revision = current_revision.saturating_add(1);
-            if let Err(error) = next.save_with_revision(path, revision) {
+            if let Err(error) = next.save_merged(path, revision) {
                 tracing::error!(%error, "could not persist configuration");
                 ledger.entries.pop();
                 if let Err(cleanup_error) = save_idempotency(path, &ledger) {

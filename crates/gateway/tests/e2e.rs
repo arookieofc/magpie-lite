@@ -14,6 +14,10 @@ use magpie_gateway::{
 };
 use serde_json::{Value, json};
 
+/// The retired-model store is process-global; the two tests that re-point
+/// it must not run concurrently (same pattern as retired.rs unit tests).
+static RETIRED_STORE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[derive(Clone)]
 struct MockUpstream {
     last_request: Arc<Mutex<Option<Value>>>,
@@ -1389,6 +1393,7 @@ async fn retired_model_falls_back_to_another_provider() {
 
 #[tokio::test]
 async fn retired_model_leaves_the_catalog_until_it_answers() {
+    let _store = RETIRED_STORE_LOCK.lock().await;
     let path = init_retired_for_test("catalog");
     let primary = spawn_retired_model().await;
     let (backup, _) = spawn_mock().await;
@@ -1568,6 +1573,7 @@ async fn spawn_zen_pair(replies: Vec<(u16, Value)>) -> (String, Arc<Mutex<usize>
 /// key were refused.
 #[tokio::test]
 async fn zen_unsupported_model_sits_out_alone() {
+    let _store = RETIRED_STORE_LOCK.lock().await;
     let _path = init_retired_for_test("zen-alone");
     let (gw, requests) = spawn_zen_pair(vec![
         (

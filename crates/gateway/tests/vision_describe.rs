@@ -30,6 +30,10 @@ const PNG: &str = "c2NyZWVuc2hvdA==";
 const ANSWER: &str = "text only answered from a description";
 const DESCRIPTION: &str = "a red square";
 
+/// Description sights and describer rest are process-global: tests sharing
+/// this target run in parallel, so hold this while a test describes.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[derive(Clone)]
 struct Mock {
     seen: Arc<Mutex<Vec<Value>>>,
@@ -139,6 +143,9 @@ struct Fixture {
 }
 
 async fn fixture(vision: Option<&str>, fail_describe: bool) -> Fixture {
+    // Description sights and describer rest are process-global: clear them
+    // so parallel tests in this target do not read each other's cache.
+    magpie_gateway::describe::reset();
     let blind_seen = Arc::new(Mutex::new(Vec::new()));
     let seeing_seen = Arc::new(Mutex::new(Vec::new()));
     let blind_upstream = serve(Router::new().route(
@@ -236,6 +243,7 @@ fn reply_text(value: &Value) -> String {
 
 #[tokio::test]
 async fn vision_hit_describes_and_hides_image_bytes() {
+    let _serial = SERIAL.lock().await;
     let fx = fixture(Some("seeing/mock-model"), false).await;
     let (status, value) = ask(&fx.gateway.base, &current_image("blind/mock-model")).await;
     assert_eq!(status, StatusCode::OK, "{value}");
@@ -261,6 +269,7 @@ async fn vision_hit_describes_and_hides_image_bytes() {
 
 #[tokio::test]
 async fn vision_unset_falls_back_to_refusal() {
+    let _serial = SERIAL.lock().await;
     let fx = fixture(None, false).await;
     let (status, value) = ask(&fx.gateway.base, &current_image("blind/mock-model")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{value}");
@@ -270,6 +279,7 @@ async fn vision_unset_falls_back_to_refusal() {
 
 #[tokio::test]
 async fn vision_missing_names_the_describer() {
+    let _serial = SERIAL.lock().await;
     let fx = fixture(Some("gone/mock-model"), false).await;
     let (status, value) = ask(&fx.gateway.base, &current_image("blind/mock-model")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{value}");
@@ -284,6 +294,7 @@ async fn vision_missing_names_the_describer() {
 
 #[tokio::test]
 async fn vision_failure_falls_back_and_rests() {
+    let _serial = SERIAL.lock().await;
     let fx = fixture(Some("seeing/mock-model"), true).await;
     let body = current_image("blind/mock-model");
     let (first_status, _) = ask(&fx.gateway.base, &body).await;

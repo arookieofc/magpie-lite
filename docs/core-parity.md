@@ -1507,3 +1507,31 @@ on the clean tree and are pre-existing, not regressions:
 Still open after this increment: secrets migration wiring plus recovery,
 versioned API, cost/quota aggregates, and the protocol evidence gaps the
 table already lists.
+
+### Secrets migration wiring (uncommitted work in progress)
+
+Storage-only `secrets.rs` is now wired in: the gateway keeps routing
+metadata in the TOML and secrets (gateway token + provider API keys) in a
+sibling `secrets.enc`, split at rest and merged in memory.
+`Config::split_secrets` / `overlay_secrets` / `has_secrets`,
+`Config::load_merged` (absent blob + plaintext TOML migrates: blob write,
+owner-only `.pre-secrets.bak`, stripped re-save keeping the revision),
+`Config::save_merged`, and `Config::recover_secrets` (restore from backup,
+quarantine the bad blob as `.corrupt-<millis>`; errors without a backup).
+The default gateway token stays in the TOML as public knowledge. An
+unreadable blob is a hard error naming `secrets recover`; nothing silently
+runs on half its credentials. `ConfigStore`'s external-edit check compares
+canonicalized shapes so the blob/TOML field split cannot false-positive.
+CLI/serve/vision/group/provider paths all go through the merged helpers;
+`magpie-lite secrets status|migrate|recover` inspects, forces, and recovers.
+Nine new router unit tests (round trip, default-token stay, migration with
+backup, empty/missing inputs, save round trip, damaged blob, recover with
+and without backup); one gateway test updated to the merged view
+(`metadata_edit_preserves_legacy_keys...` now asserts the pool, not the
+stripped TOML field). Pre-existing clean-tree failures observed while
+verifying and left alone: the `magpie-core` stream-opening test, three
+`retrieval` passthrough tests, and the `namespaces` four-upstream test
+(plus a workspace-wide clippy `too_many_arguments` in untouched
+`magpie-core` under the current toolchain and one flaky
+`vision_failure_falls_back_and_rests` rest-timing test that passes in
+isolation).

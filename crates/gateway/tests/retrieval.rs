@@ -42,13 +42,19 @@ async fn spawn_upstream() -> (String, Arc<Mutex<Option<(String, Value)>>>) {
     let app = Router::new()
         .route("/v1/{*path}", post(upstream_endpoint))
         .with_state(MockRetrieval { last: last.clone() });
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (format!("http://{addr}"), last)
 }
 
-async fn spawn_gateway(upstream: String, embeddings: Vec<String>, rerankers: Vec<String>) -> String {
+async fn spawn_gateway(
+    upstream: String,
+    embeddings: Vec<String>,
+    rerankers: Vec<String>,
+) -> String {
     let config = Config {
         port: 0,
         token: "magpie-lite".into(),
@@ -105,7 +111,9 @@ async fn spawn_gateway(upstream: String, embeddings: Vec<String>, rerankers: Vec
         rpms: magpie_gateway::lanes::Rpms::default(),
     });
     let app = build_router(state);
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     format!("http://{addr}")
@@ -119,11 +127,17 @@ async fn embeddings_passes_through_by_bare_and_qualified_id() {
     for asked in ["text-embedding-3-small", "mock/text-embedding-3-small"] {
         let resp = reqwest::Client::new()
             .post(format!("{gw}/v1/embeddings"))
+            .bearer_auth("magpie-lite")
             .json(&json!({"model": asked, "input": "hi"}))
             .send()
             .await
             .unwrap();
-        assert_eq!(resp.status(), 200, "{}", resp.text().await.unwrap_or_default());
+        assert_eq!(
+            resp.status(),
+            200,
+            "{}",
+            resp.text().await.unwrap_or_default()
+        );
         let (path, sent) = last.lock().unwrap().clone().expect("upstream called");
         assert_eq!(path, "embeddings");
         assert_eq!(sent["model"], "text-embedding-3-small");
@@ -138,6 +152,7 @@ async fn rerank_passes_through() {
 
     let resp = reqwest::Client::new()
         .post(format!("{gw}/v1/rerank"))
+        .bearer_auth("magpie-lite")
         .json(&json!({"model": "bge-reranker-v2-m3", "query": "q", "documents": ["a", "b"]}))
         .send()
         .await
@@ -162,6 +177,7 @@ async fn unknown_and_chat_models_are_not_retrieval() {
     ] {
         let resp = reqwest::Client::new()
             .post(format!("{gw}/v1/{path}"))
+            .bearer_auth("magpie-lite")
             .json(&json!({"model": model}))
             .send()
             .await

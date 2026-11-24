@@ -680,8 +680,10 @@ async fn metadata_edit_preserves_legacy_keys_and_cooldown_then_explicit_clear_re
     );
     assert_eq!(gw.state.config.current().provider[0].key_generation, before);
     assert_eq!(
-        Config::load(&gw.path).unwrap().provider[0].api_key,
-        "legacy-secret"
+        // Secrets now rest in the sibling blob; the merged view still
+        // carries the preserved legacy key.
+        Config::load_merged(&gw.path).unwrap().provider[0].api_key_pool(),
+        vec!["legacy-secret".to_owned()]
     );
     assert!(snapshot(&gw, "/stats").await["key_cooldowns"]["mock"]["0"].is_object());
     body["api_keys"] = json!([]);

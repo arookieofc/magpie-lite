@@ -568,9 +568,11 @@ pub fn encode_response(resp: &CompletionResponse) -> Value {
 #[derive(Debug, Default)]
 pub struct ChatStreamDecoder {
     started: bool,
-    /// Each choice's open Chat tool call, so fragments sent without OpenAI's
-    /// required index still address the call the vendor means.
-    open_calls: HashMap<usize, OpenCall>,
+    /// Each choice's open Chat tool calls, keyed by upstream index
+    /// (`usize::MAX` for fragments without one), so parallel calls each
+    /// keep their own slot and fragments sent without OpenAI's required
+    /// index still address the call the vendor means.
+    open_calls: HashMap<usize, ChoiceCalls>,
     /// Calls held while the open call's arguments were not yet whole JSON
     /// when they started: fragments that arrive by turns (index 0, 1, 0, 1)
     /// accumulate per upstream index and are emitted whole, in start order,
@@ -578,17 +580,22 @@ pub struct ChatStreamDecoder {
     held: Vec<HeldCall>,
 }
 
-/// One choice's open Chat tool-call stream.
+/// One choice's open Chat tool-call streams: the next client-facing index
+/// plus one slot per upstream index.
+#[derive(Debug, Default)]
+struct ChoiceCalls {
+    next: usize,
+    opens: HashMap<usize, OpenCall>,
+}
+
+/// One open Chat tool call: a relay may pass Responses' output_index
+/// through, so the first call can arrive as 1 (873b4987).
 #[derive(Debug, Default)]
 struct OpenCall {
     open: bool,
     id: String,
-    /// The upstream index this call goes by: a relay may pass Responses'
-    /// output_index through, so the first call can arrive as 1 (873b4987).
-    upstream: usize,
     /// The client-facing index: calls count 0, 1, 2 in the order they start.
     index: usize,
-    next: usize,
     /// Whether the open call's argument bytes close their JSON: a new call
     /// that starts while they do not is held for the reply's end (865df247).
     args_whole: bool,
@@ -606,6 +613,16 @@ struct HeldCall {
     id: String,
     name: String,
     args: String,
+}
+
+/// One streamed tool-call fragment passed to the per-choice reader.
+struct ToolFragment<'a> {
+    choice: usize,
+    c: &'a Value,
+    position: usize,
+    id: &'a str,
+    name: &'a str,
+    args: &'a str,
 }
 
 /// Whether a fragment's id names a different call than the one open at its
@@ -721,7 +738,17 @@ impl ChatStreamDecoder {
                     .pointer("/function/arguments")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
-                self.tool_call(choice_index, c, position, id, name, args, &mut out);
+                self.tool_call(
+                    ToolFragment {
+                        choice: choice_index,
+                        c,
+                        position,
+                        id,
+                        name,
+                        args,
+                    },
+                    &mut out,
+                );
             }
         }
         if let Some(reason) = choice.get("finish_reason").and_then(Value::as_str)
@@ -731,7 +758,7 @@ impl ChatStreamDecoder {
             let open = self
                 .open_calls
                 .get(&choice_index)
-                .is_some_and(|open| open.open);
+                .is_some_and(|state| state.opens.values().any(|open| open.open));
             let stop = if reason == "stop" && open {
                 StopReason::ToolUse
             } else {
@@ -753,10 +780,12 @@ impl ChatStreamDecoder {
         }
         let mut held = std::mem::take(&mut self.held);
         held.sort_by_key(|call| call.index);
-        for open in self.open_calls.values_mut() {
-            open.open = false;
-            open.id.clear();
-            open.args_whole = false;
+        for state in self.open_calls.values_mut() {
+            for open in state.opens.values_mut() {
+                open.open = false;
+                open.id.clear();
+                open.args_whole = false;
+            }
         }
         let mut out = Vec::new();
         for call in held {
@@ -778,21 +807,24 @@ impl ChatStreamDecoder {
     }
 
     /// Read one fragment of a tool call. A fragment repeating the open
-    /// call's id, or carrying none, continues it; a different index or a new
-    /// id starts the next call. When the open call's arguments are not yet
-    /// whole JSON the starter is held by its upstream index and emitted
-    /// whole at finish, so interleaved fragments stay with their own call
+    /// call's id, or carrying none, continues it; a different upstream
+    /// index or a new id starts the next call. Each upstream index keeps
+    /// its own open slot, so parallel calls each stream their own
+    /// fragments; a call starting while another's arguments are not yet
+    /// whole JSON is held by its upstream index and emitted whole at
+    /// finish, so interleaved fragments stay with their own call
     /// (865df247).
-    fn tool_call(
-        &mut self,
-        choice: usize,
-        c: &Value,
-        position: usize,
-        id: &str,
-        name: &str,
-        args: &str,
-        out: &mut Vec<StreamEvent>,
-    ) {
+    /// One streamed tool-call fragment: kept as a struct so the reader
+    /// stays under the argument-count lint.
+    fn tool_call(&mut self, fragment: ToolFragment<'_>, out: &mut Vec<StreamEvent>) {
+        let ToolFragment {
+            choice,
+            c,
+            position,
+            id,
+            name,
+            args,
+        } = fragment;
         let upstream = c
             .get("index")
             .and_then(Value::as_u64)
@@ -808,21 +840,54 @@ impl ChatStreamDecoder {
                 }
             }
         }
-        let open = self.open_calls.entry(choice).or_default();
+        // Fragments without an upstream index share one slot; indexed ones
+        // address their own, so one choice can stream parallel calls.
+        let slot = upstream.unwrap_or(usize::MAX);
         let continues = match upstream {
-            Some(u) => open.open && u == open.upstream && !new_id(id, &open.id),
-            None => open.open && position == 0 && !new_id(id, &open.id),
+            Some(_) => self.open_calls.get(&choice).is_some_and(|state| {
+                state
+                    .opens
+                    .get(&slot)
+                    .is_some_and(|open| open.open && !new_id(id, &open.id))
+            }),
+            None => self.open_calls.get(&choice).is_some_and(|state| {
+                state
+                    .opens
+                    .get(&slot)
+                    .is_some_and(|open| open.open && position == 0 && !new_id(id, &open.id))
+            }),
         };
         if continues {
+            let state = self
+                .open_calls
+                .get_mut(&choice)
+                .expect("continuing call has a slot");
+            let open = state
+                .opens
+                .get_mut(&slot)
+                .expect("continuing call has a slot");
             if !id.is_empty() {
                 open.id = id.to_owned();
             }
             Self::tool_args(open, args, out);
             return;
         }
-        if open.open && (!open.args_whole || !self.held.is_empty()) {
-            let index = open.next;
-            open.next = open.next.saturating_add(1);
+        // A new call starting while any open call's arguments are not yet
+        // whole JSON waits for the reply's end instead of interleaving
+        // partial pieces with the open one.
+        let blocked = self.open_calls.get(&choice).is_some_and(|state| {
+            state
+                .opens
+                .values()
+                .any(|open| open.open && !open.args_whole)
+        }) || !self.held.is_empty();
+        if blocked {
+            let index = {
+                let state = self.open_calls.entry(choice).or_default();
+                let index = upstream.unwrap_or(state.next);
+                state.next = state.next.max(index.saturating_add(1));
+                index
+            };
             self.held.push(HeldCall {
                 upstream: upstream.unwrap_or(usize::MAX),
                 index,
@@ -832,16 +897,17 @@ impl ChatStreamDecoder {
             });
             return;
         }
-        // Number calls 0, 1, 2 in the order they start, whatever index the
-        // upstream numbered them by: a Responses output_index puts the
-        // reply's text at 0 and its first call at 1 (873b4987).
-        let index = open.next;
-        open.next = open.next.saturating_add(1);
+        // Number unindexed calls 0, 1, 2 in the order they start; a call the
+        // upstream explicitly numbers keeps its index, and later unindexed
+        // calls count past it.
+        let state = self.open_calls.entry(choice).or_default();
+        let index = upstream.unwrap_or(state.next);
+        state.next = state.next.max(index.saturating_add(1));
+        let open = state.opens.entry(slot).or_default();
         open.open = true;
         if !id.is_empty() {
             open.id = id.to_owned();
         }
-        open.upstream = upstream.unwrap_or(usize::MAX);
         open.index = index;
         open.args_whole = args.is_empty();
         if !id.is_empty() || !name.is_empty() {

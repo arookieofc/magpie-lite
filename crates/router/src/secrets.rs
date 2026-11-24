@@ -5,8 +5,10 @@
 //! with a key derived from the local machine id. A copy moved to another
 //! machine fails authentication instead of decrypting.
 //!
-//! This increment is storage only: the gateway still reads plaintext
-//! config. Migration wiring lands after a recovery path is reviewed.
+//! Storage plus the split/merge helpers lives here; the migration wiring
+//! (`Config::load_merged` / `Config::save_merged` / `Config::recover_secrets`
+//! in `config.rs`) decides when secrets move between the TOML file and this
+//! blob. See that module for the migration and recovery contract.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -51,6 +53,19 @@ pub fn secret_dir() -> anyhow::Result<PathBuf> {
 /// Full path of the encrypted blob.
 pub fn secrets_path() -> anyhow::Result<PathBuf> {
     Ok(secret_dir()?.join("secrets.enc"))
+}
+
+/// Full path of the encrypted blob for one configuration file: the
+/// `secrets.enc` sibling of that TOML file. The gateway resolves secrets
+/// per config file (not per home directory) so `--config` layouts and
+/// sandboxed tests stay hermetic: each config migrates into its own
+/// sibling blob instead of sharing the home-directory one.
+pub fn secrets_path_for(config_path: &std::path::Path) -> PathBuf {
+    config_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.join("secrets.enc"))
+        .unwrap_or_else(|| PathBuf::from("secrets.enc"))
 }
 
 /// Stable machine code for key derivation. No new deps: OS-native source
@@ -197,10 +212,7 @@ pub fn save_secrets(
 
 /// Decrypt `path` with `machine`. Missing file reads as `None` so a fresh
 /// install starts empty; wrong machine, version or tamper is a hard error.
-pub fn load_secrets(
-    path: &std::path::Path,
-    machine: &str,
-) -> anyhow::Result<Option<SecretsFile>> {
+pub fn load_secrets(path: &std::path::Path, machine: &str) -> anyhow::Result<Option<SecretsFile>> {
     if !path.exists() {
         return Ok(None);
     }
@@ -250,7 +262,10 @@ mod tests {
         SecretsFile {
             token: "test-token".into(),
             api_keys: BTreeMap::from([
-                ("acme".into(), vec!["test-key-1".into(), "test-key-2".into()]),
+                (
+                    "acme".into(),
+                    vec!["test-key-1".into(), "test-key-2".into()],
+                ),
                 ("other".into(), vec!["test-key-3".into()]),
             ]),
         }
@@ -286,7 +301,12 @@ mod tests {
     fn other_machine_cannot_decrypt() {
         let path = temp_path("machine-mismatch");
         save_secrets(&path, "machine-a", &dummy()).unwrap();
-        assert!(load_secrets(&path, "machine-b").unwrap_err().to_string().contains("machine mismatch"));
+        assert!(
+            load_secrets(&path, "machine-b")
+                .unwrap_err()
+                .to_string()
+                .contains("machine mismatch")
+        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -318,7 +338,10 @@ mod tests {
         let path = temp_path("perms");
         save_secrets(&path, "test-machine-1", &dummy()).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "secrets.enc should be owner-only, got {mode:o}");
+        assert_eq!(
+            mode, 0o600,
+            "secrets.enc should be owner-only, got {mode:o}"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -326,6 +349,9 @@ mod tests {
     fn secret_dir_is_home_magpie_lite() {
         let home = dirs::home_dir().unwrap();
         assert_eq!(secret_dir().unwrap(), home.join("magpie-lite"));
-        assert_eq!(secrets_path().unwrap(), home.join("magpie-lite").join("secrets.enc"));
+        assert_eq!(
+            secrets_path().unwrap(),
+            home.join("magpie-lite").join("secrets.enc")
+        );
     }
 }

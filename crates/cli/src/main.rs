@@ -55,6 +55,23 @@ enum Command {
         /// `provider/model` or `off`; blank just says.
         state: Option<String>,
     },
+    /// Inspect, migrate, or recover the machine-bound encrypted secrets
+    /// (`secrets.enc` beside the config file).
+    Secrets {
+        #[command(subcommand)]
+        command: SecretsCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum SecretsCommand {
+    /// Show whether secrets migrated out of the TOML, without printing values.
+    Status,
+    /// Move plaintext TOML secrets into the encrypted blob now.
+    Migrate,
+    /// Restore the TOML from its `.pre-secrets.bak` backup and quarantine
+    /// the unreadable blob (recovers from a damaged or foreign-machine file).
+    Recover,
 }
 
 #[derive(Subcommand)]
@@ -244,7 +261,7 @@ fn load_config(path: &Option<std::path::PathBuf>) -> Result<Config> {
         Some(p) => p.clone(),
         None => config_path()?,
     };
-    Config::load(&path).with_context(|| format!("loading {}", path.display()))
+    Config::load_merged(&path).with_context(|| format!("loading {}", path.display()))
 }
 
 fn save_config(path: &std::path::Path, config: &Config) -> Result<()> {
@@ -255,7 +272,7 @@ fn save_config(path: &std::path::Path, config: &Config) -> Result<()> {
     } else {
         1
     };
-    config.save_with_revision(path, revision)?;
+    config.save_merged(path, revision)?;
     Ok(())
 }
 
@@ -304,7 +321,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::Serve { port, history_file } => {
             let path = provider_path(&cli.config)?;
-            let cfg = Config::load(&path)?;
+            let cfg = Config::load_merged(&path)?;
             magpie_gateway::serve_with_config_path(cfg, port, Some(path), history_file).await?;
         }
         Command::Provider { command } => match command {
@@ -699,7 +716,7 @@ async fn main() -> Result<()> {
         }
         Command::Vision { state } => {
             let path = provider_path(&cli.config)?;
-            let mut cfg = Config::load(&path)?;
+            let mut cfg = Config::load_merged(&path)?;
             let Some(state) = state else {
                 match cfg.vision.as_deref() {
                     None | Some("") | Some("off") => println!(
@@ -723,6 +740,67 @@ async fn main() -> Result<()> {
                 Some("off") => println!("image recognition is off"),
                 Some(want) => println!("image recognition is {want}"),
                 _ => println!("image recognition is off"),
+            }
+        }
+        Command::Secrets { command } => {
+            let path = provider_path(&cli.config)?;
+            match command {
+                SecretsCommand::Status => {
+                    let raw = Config::load(&path)
+                        .with_context(|| format!("loading {}", path.display()))?;
+                    let blob = magpie_gateway::secrets::secrets_path_for(&path);
+                    println!("config: {}", path.display());
+                    println!(
+                        "secrets blob: {} ({})",
+                        blob.display(),
+                        if blob.exists() { "present" } else { "absent" }
+                    );
+                    println!(
+                        "plaintext secrets in TOML: {}",
+                        if raw.has_secrets() { "yes" } else { "no" }
+                    );
+                    if blob.exists() {
+                        let merged = Config::load_merged(&path)
+                            .with_context(|| format!("unlocking {}", blob.display()))?;
+                        let slots: usize = merged
+                            .provider
+                            .iter()
+                            .map(|provider| provider.api_key_pool().len())
+                            .sum();
+                        println!(
+                            "blob unlocks: yes ({} providers, {} key slots; values never printed)",
+                            merged.provider.len(),
+                            slots
+                        );
+                    }
+                }
+                SecretsCommand::Migrate => {
+                    let before = Config::load(&path)
+                        .with_context(|| format!("loading {}", path.display()))?;
+                    if !before.has_secrets() {
+                        println!(
+                            "nothing to migrate: no plaintext secrets in {}",
+                            path.display()
+                        );
+                        return Ok(());
+                    }
+                    Config::load_merged(&path)
+                        .with_context(|| format!("migrating {}", path.display()))?;
+                    println!(
+                        "migrated secrets out of {} into {}; backup at {}",
+                        path.display(),
+                        magpie_gateway::secrets::secrets_path_for(&path).display(),
+                        Config::secrets_backup_path_for(&path).display()
+                    );
+                }
+                SecretsCommand::Recover => {
+                    Config::recover_secrets(&path)
+                        .with_context(|| format!("recovering {}", path.display()))?;
+                    println!(
+                        "restored {} from its backup; the bad blob was quarantined aside",
+                        path.display()
+                    );
+                }
             }
         }
     }

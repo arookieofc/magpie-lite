@@ -8,6 +8,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::secrets::SecretsFile;
+
 impl std::str::FromStr for Protocol {
     type Err = String;
 
@@ -1919,6 +1921,199 @@ impl Config {
         Ok(())
     }
 
+    /// Split the secret half (gateway token + provider API keys) out of
+    /// this configuration. The returned metadata keeps every routing
+    /// field; the returned [`SecretsFile`] keeps only non-empty secrets.
+    /// The default gateway token is public knowledge, so it stays in the
+    /// TOML instead of moving into the blob.
+    pub fn split_secrets(&self) -> (Self, SecretsFile) {
+        let mut metadata = self.clone();
+        let mut secrets = SecretsFile::default();
+        if metadata.token != default_token() {
+            secrets.token = metadata.token.clone();
+            metadata.token.clear();
+        }
+        for (stripped, full) in metadata.provider.iter_mut().zip(self.provider.iter()) {
+            let keys: Vec<String> = if full.api_keys.is_empty() {
+                vec![full.api_key.clone()]
+            } else {
+                full.api_keys.clone()
+            }
+            .into_iter()
+            .filter(|key| !key.is_empty())
+            .collect();
+            if !keys.is_empty() {
+                secrets.api_keys.insert(full.id.clone(), keys);
+            }
+            stripped.api_key.clear();
+            stripped.api_keys.clear();
+        }
+        (metadata, secrets)
+    }
+
+    /// Merge a decrypted [`SecretsFile`] into this configuration. An empty
+    /// blob token leaves the configured token alone; a provider entry
+    /// replaces that provider's pool (canonicalized into `api_keys`) and
+    /// clears the legacy singular field without changing the effective pool.
+    pub fn overlay_secrets(&mut self, secrets: &SecretsFile) {
+        if !secrets.token.is_empty() {
+            self.token = secrets.token.clone();
+        }
+        for provider in &mut self.provider {
+            if let Some(keys) = secrets.api_keys.get(&provider.id) {
+                provider.api_keys = keys.clone();
+                provider.api_key.clear();
+            }
+        }
+    }
+
+    /// Whether this configuration carries migrate-worthy secrets: a
+    /// non-default gateway token or any non-empty provider key.
+    pub fn has_secrets(&self) -> bool {
+        if !self.token.is_empty() && self.token != default_token() {
+            return true;
+        }
+        self.provider.iter().any(|provider| {
+            !provider.api_key.is_empty() || provider.api_keys.iter().any(|key| !key.is_empty())
+        })
+    }
+
+    /// Plaintext backup of the TOML written when secrets first migrate out
+    /// of it. Recovery restores this file, so a damaged or foreign-machine
+    /// `secrets.enc` never locks the configured credentials away.
+    pub fn secrets_backup_path_for(path: &std::path::Path) -> PathBuf {
+        let mut backup = path.as_os_str().to_os_string();
+        backup.push(".pre-secrets.bak");
+        PathBuf::from(backup)
+    }
+
+    /// Load a configuration with secrets merged in from its sibling
+    /// `secrets.enc`:
+    ///
+    /// - Blob present: decrypt with the machine id and overlay. A damaged,
+    ///   foreign-machine or otherwise unreadable blob is a hard error naming
+    ///   `secrets recover`; the gateway never silently runs on half its
+    ///   credentials.
+    /// - Blob absent but the TOML holds secrets: migrate — write the blob,
+    ///   back the plaintext TOML up to `.pre-secrets.bak` (owner-only),
+    ///   then re-save the TOML stripped, keeping its revision. The returned
+    ///   configuration still carries the full credentials in memory.
+    /// - Neither: plain load, same as [`Config::load`].
+    pub fn load_merged(path: &std::path::Path) -> anyhow::Result<Self> {
+        let config = Self::load(path)?;
+        let secrets_path = crate::secrets::secrets_path_for(path);
+        if secrets_path.exists() {
+            let machine = crate::secrets::machine_id().map_err(|error| {
+                anyhow::anyhow!("cannot unlock {}: {error:#}; restore the plaintext backup with `magpie-lite secrets recover --config {}`",
+                    secrets_path.display(), path.display())
+            })?;
+            let merged = match crate::secrets::load_secrets(&secrets_path, &machine).map_err(|error| {
+                anyhow::anyhow!("cannot unlock {}: {error:#}; restore the plaintext backup with `magpie-lite secrets recover --config {}`",
+                    secrets_path.display(), path.display())
+            })? {
+                Some(secrets) => {
+                    let mut merged = config;
+                    merged.overlay_secrets(&secrets);
+                    merged
+                }
+                None => config,
+            };
+            return Ok(merged);
+        }
+        if !path.exists() || !config.has_secrets() {
+            return Ok(config);
+        }
+        let machine = crate::secrets::machine_id().map_err(|error| {
+            anyhow::anyhow!(
+                "cannot migrate secrets out of {}: {error:#}; fix the machine id, then retry",
+                path.display()
+            )
+        })?;
+        let (stripped, secrets) = config.split_secrets();
+        crate::secrets::save_secrets(&secrets_path, &machine, &secrets).map_err(|error| {
+            anyhow::anyhow!(
+                "cannot write {}: {error:#}; configuration left unchanged",
+                secrets_path.display()
+            )
+        })?;
+        let backup = Self::secrets_backup_path_for(path);
+        std::fs::copy(path, &backup).map_err(|error| {
+            anyhow::anyhow!(
+                "cannot back {} up to {}: {error:#}; configuration left unchanged",
+                path.display(),
+                backup.display()
+            )
+        })?;
+        Self::restrict_secret_file(&backup)?;
+        let revision = Self::persisted_revision(path).unwrap_or(1);
+        stripped.save_with_revision(path, revision)?;
+        Ok(config)
+    }
+
+    /// Save a configuration split at rest: routing metadata goes to the
+    /// TOML (with `revision`), secrets go to the sibling `secrets.enc`.
+    /// The blob is written first so a crash between the two writes leaves
+    /// the newest credentials live; a second save heals stale metadata.
+    pub fn save_merged(&self, path: &std::path::Path, revision: u64) -> anyhow::Result<()> {
+        let (stripped, secrets) = self.split_secrets();
+        if secrets.token.is_empty() && secrets.api_keys.is_empty() {
+            stripped.save_with_revision(path, revision)?;
+            return Ok(());
+        }
+        let secrets_path = crate::secrets::secrets_path_for(path);
+        let machine = crate::secrets::machine_id().map_err(|error| {
+            anyhow::anyhow!(
+                "cannot persist secrets beside {}: {error:#}; nothing was saved",
+                path.display()
+            )
+        })?;
+        crate::secrets::save_secrets(&secrets_path, &machine, &secrets).map_err(|error| {
+            anyhow::anyhow!(
+                "cannot write {}: {error:#}; nothing was saved",
+                secrets_path.display()
+            )
+        })?;
+        stripped.save_with_revision(path, revision)?;
+        Ok(())
+    }
+
+    /// Recovery path for an unreadable `secrets.enc` (damaged file or a
+    /// blob moved from another machine): restore the plaintext TOML from
+    /// its `.pre-secrets.bak` backup and quarantine the bad blob aside.
+    /// The next load re-migrates from the restored TOML. Errors when no
+    /// backup exists; the caller must then re-enter keys (for example via
+    /// `provider add --api-key`, which re-creates the blob on save).
+    pub fn recover_secrets(path: &std::path::Path) -> anyhow::Result<()> {
+        let backup = Self::secrets_backup_path_for(path);
+        if !backup.exists() {
+            anyhow::bail!(
+                "no secrets backup at {}; re-enter keys with `provider add --api-key` (saving re-creates the encrypted blob)",
+                backup.display()
+            );
+        }
+        let secrets_path = crate::secrets::secrets_path_for(path);
+        if secrets_path.exists() {
+            let mut quarantined = secrets_path.as_os_str().to_os_string();
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_millis())
+                .unwrap_or(0);
+            quarantined.push(format!(".corrupt-{stamp}"));
+            std::fs::rename(&secrets_path, PathBuf::from(quarantined)).map_err(|error| {
+                anyhow::anyhow!("cannot quarantine {}: {error:#}", secrets_path.display())
+            })?;
+        }
+        std::fs::copy(&backup, path).map_err(|error| {
+            anyhow::anyhow!(
+                "cannot restore {} from {}: {error:#}",
+                path.display(),
+                backup.display()
+            )
+        })?;
+        Self::restrict_secret_file(path)?;
+        Ok(())
+    }
+
     /// Restrict a secret-bearing file to owner-only access on Unix.
     /// Windows ACL hardening is out of scope: the default inherited ACL
     /// applies there until an OS-native secret store lands.
@@ -2317,9 +2512,7 @@ impl Config {
             return (route.to_owned(), String::new());
         }
         if let Some((pid, rest)) = route.split_once('/')
-            && self
-                .provider(pid)
-                .is_some_and(|p| p.serves(rest))
+            && self.provider(pid).is_some_and(|p| p.serves(rest))
         {
             return (route.to_owned(), String::new());
         }
@@ -3088,7 +3281,7 @@ base_url = "http://127.0.0.1:1/v1"
                 queue_limit: None,
                 queue_wait_s: None,
                 icon: String::new(),
-            key_generation: 0,
+                key_generation: 0,
                 pin_upstream: false,
                 key_limits: Vec::new(),
             }],
@@ -3484,7 +3677,7 @@ affinity = "session"
                     queue_limit: None,
                     queue_wait_s: None,
                     icon: String::new(),
-            key_generation: 0,
+                    key_generation: 0,
                     pin_upstream: false,
                     key_limits: Vec::new(),
                 },
@@ -3512,7 +3705,7 @@ affinity = "session"
                     queue_limit: None,
                     queue_wait_s: None,
                     icon: String::new(),
-            key_generation: 0,
+                    key_generation: 0,
                     pin_upstream: false,
                     key_limits: Vec::new(),
                 },
@@ -4237,7 +4430,226 @@ mod loop_guard_config_tests {
         let path = dir.path().join("config.toml");
         Config::default().save_with_revision(&path, 1).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "config.toml should be owner-only, got {mode:o}");
+        assert_eq!(
+            mode, 0o600,
+            "config.toml should be owner-only, got {mode:o}"
+        );
         assert_eq!(Config::persisted_revision(&path).unwrap(), 1);
+    }
+
+    fn secretful_config() -> Config {
+        let mut config = Config {
+            token: "gateway-secret".to_owned(),
+            ..Default::default()
+        };
+        config.provider.push(ProviderConfig {
+            id: "acme".to_owned(),
+            name: String::new(),
+            protocol: Protocol::Chat,
+            base_url: "http://127.0.0.1:9/v1".to_owned(),
+            api_key: "legacy-key".to_owned(),
+            api_keys: Vec::new(),
+            models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
+            contexts: Default::default(),
+            outputs: Default::default(),
+            free_models: Default::default(),
+            fallback: Vec::new(),
+            key_cooldown_ms: None,
+            capabilities: Default::default(),
+            routing: RoutingPolicy::default(),
+            weights: Vec::new(),
+            affinity: Default::default(),
+            max_concurrency: None,
+            max_rpm: None,
+            queue_limit: None,
+            queue_wait_s: None,
+            icon: String::new(),
+            key_generation: 0,
+            pin_upstream: false,
+            key_limits: Vec::new(),
+        });
+        config.provider.push(ProviderConfig {
+            id: "other".to_owned(),
+            name: String::new(),
+            protocol: Protocol::Chat,
+            base_url: "http://127.0.0.1:9/v1".to_owned(),
+            api_key: String::new(),
+            api_keys: vec!["pool-a".to_owned(), "pool-b".to_owned()],
+            models: Vec::new(),
+            embeddings: Vec::new(),
+            rerankers: Vec::new(),
+            contexts: Default::default(),
+            outputs: Default::default(),
+            free_models: Default::default(),
+            fallback: Vec::new(),
+            key_cooldown_ms: None,
+            capabilities: Default::default(),
+            routing: RoutingPolicy::default(),
+            weights: Vec::new(),
+            affinity: Default::default(),
+            max_concurrency: None,
+            max_rpm: None,
+            queue_limit: None,
+            queue_wait_s: None,
+            icon: String::new(),
+            key_generation: 0,
+            pin_upstream: false,
+            key_limits: Vec::new(),
+        });
+        config
+    }
+
+    #[test]
+    fn split_and_overlay_round_trip_preserves_credentials() {
+        let config = secretful_config();
+        let (stripped, secrets) = config.split_secrets();
+        assert_eq!(secrets.token, "gateway-secret");
+        assert_eq!(
+            secrets.api_keys.get("acme").unwrap(),
+            &vec!["legacy-key".to_owned()]
+        );
+        assert_eq!(
+            secrets.api_keys.get("other").unwrap(),
+            &vec!["pool-a".to_owned(), "pool-b".to_owned()]
+        );
+        assert!(stripped.token.is_empty() || stripped.token == default_token());
+        assert!(
+            stripped
+                .provider
+                .iter()
+                .all(|p| p.api_key.is_empty() && p.api_keys.is_empty())
+        );
+        let mut merged = stripped;
+        merged.overlay_secrets(&secrets);
+        assert_eq!(merged.token, "gateway-secret");
+        assert_eq!(
+            merged.provider[0].api_key_pool(),
+            vec!["legacy-key".to_owned()]
+        );
+        assert_eq!(
+            merged.provider[1].api_key_pool(),
+            vec!["pool-a".to_owned(), "pool-b".to_owned()]
+        );
+    }
+
+    #[test]
+    fn default_token_stays_in_toml() {
+        let config = Config::default();
+        assert!(!config.has_secrets());
+        let (stripped, secrets) = config.split_secrets();
+        assert!(secrets.token.is_empty());
+        assert_eq!(stripped.token, default_token());
+    }
+
+    #[test]
+    fn load_merged_migrates_plaintext_into_blob_with_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        secretful_config().save_with_revision(&path, 3).unwrap();
+        let merged = Config::load_merged(&path).unwrap();
+        assert_eq!(merged.token, "gateway-secret");
+        let blob = crate::secrets::secrets_path_for(&path);
+        assert!(blob.exists(), "migration should write secrets.enc");
+        assert!(
+            Config::secrets_backup_path_for(&path).exists(),
+            "migration should back up the TOML"
+        );
+        let stripped = Config::load(&path).unwrap();
+        assert!(
+            !stripped.has_secrets(),
+            "TOML on disk should be secret-free, got {:?}",
+            stripped.token
+        );
+        assert_eq!(Config::persisted_revision(&path).unwrap(), 3);
+        // Second load overlays from the blob.
+        let again = Config::load_merged(&path).unwrap();
+        assert_eq!(again.token, "gateway-secret");
+        assert_eq!(
+            again.provider[0].api_key_pool(),
+            vec!["legacy-key".to_owned()]
+        );
+    }
+
+    #[test]
+    fn load_merged_without_secrets_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        Config::default().save_with_revision(&path, 1).unwrap();
+        let merged = Config::load_merged(&path).unwrap();
+        assert_eq!(merged.token, default_token());
+        assert!(!crate::secrets::secrets_path_for(&path).exists());
+        assert!(!Config::secrets_backup_path_for(&path).exists());
+    }
+
+    #[test]
+    fn load_merged_missing_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let merged = Config::load_merged(&path).unwrap();
+        assert_eq!(merged.token, default_token());
+    }
+
+    #[test]
+    fn save_merged_round_trips_through_load_merged() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        secretful_config().save_merged(&path, 7).unwrap();
+        assert_eq!(Config::persisted_revision(&path).unwrap(), 7);
+        assert!(!Config::load(&path).unwrap().has_secrets());
+        let merged = Config::load_merged(&path).unwrap();
+        assert_eq!(merged.token, "gateway-secret");
+        assert_eq!(
+            merged.provider[1].api_key_pool(),
+            vec!["pool-a".to_owned(), "pool-b".to_owned()]
+        );
+    }
+
+    #[test]
+    fn damaged_blob_is_a_hard_error_naming_recover() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        secretful_config().save_with_revision(&path, 1).unwrap();
+        Config::load_merged(&path).unwrap();
+        let blob = crate::secrets::secrets_path_for(&path);
+        std::fs::write(&blob, "{damaged").unwrap();
+        let error = Config::load_merged(&path).unwrap_err().to_string();
+        assert!(
+            error.contains("secrets recover"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn recover_restores_backup_and_quarantines_blob() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        secretful_config().save_with_revision(&path, 2).unwrap();
+        Config::load_merged(&path).unwrap();
+        let blob = crate::secrets::secrets_path_for(&path);
+        // Simulate a foreign-machine blob: valid envelope, wrong key.
+        crate::secrets::save_secrets(&blob, "another-machine", &SecretsFile::default()).unwrap();
+        assert!(Config::load_merged(&path).is_err());
+        Config::recover_secrets(&path).unwrap();
+        assert!(!blob.exists(), "bad blob should be quarantined aside");
+        let restored = Config::load(&path).unwrap();
+        assert_eq!(restored.token, "gateway-secret");
+        // The next load re-migrates from the restored TOML.
+        let merged = Config::load_merged(&path).unwrap();
+        assert_eq!(merged.token, "gateway-secret");
+        assert!(crate::secrets::secrets_path_for(&path).exists());
+    }
+
+    #[test]
+    fn recover_without_backup_errors_actionably() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        Config::default().save_with_revision(&path, 1).unwrap();
+        let error = Config::recover_secrets(&path).unwrap_err().to_string();
+        assert!(
+            error.contains("no secrets backup"),
+            "unexpected error: {error}"
+        );
     }
 }
