@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Radio } from "lucide-react";
 import type { Config, RequestRecord, Stats, TraceResponse, TryRecord } from "../types";
 import { fmt, formatDuration, timeOf } from "../util";
@@ -64,15 +64,19 @@ export default function Routing({ trace }: Props) {
   const srcsRef = useRef<HTMLDivElement>(null);
   const acctsRef = useRef<HTMLOListElement>(null);
   const wiresRef = useRef<SVGSVGElement>(null);
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
 
-  const routes = [...(trace?.routes ?? [])].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  const routes = useMemo(
+    () => [...(trace?.routes ?? [])].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)),
+    [trace],
+  );
   const latest = routes[routes.length - 1];
+  const active =
+    (selectedSeq !== null ? routes.find((r) => r.seq === selectedSeq) : undefined) ?? latest;
+  const pinned = selectedSeq !== null && active?.seq !== latest?.seq;
 
-  // Draw the bezier wires once the cards lay out: left column (agent
-  // sources) to the hub, hub to each tried account on the right. A
-  // ResizeObserver redraws when the view is shown again or resized.
   useEffect(() => {
-    if (!latest) return;
+    if (!active) return;
     const stage = stageRef.current;
     if (!stage) return;
     const draw = () => {
@@ -120,9 +124,9 @@ export default function Routing({ trace }: Props) {
       cancelAnimationFrame(id);
       observer.disconnect();
     };
-  }, [latest, trace]);
+  }, [active, trace]);
 
-  const tries = latest?.tries ?? [];
+  const tries = active?.tries ?? [];
   const srcAgents = new Map<string, RequestRecord>();
   for (const r of routes.slice(-6)) {
     const key = r.client_protocol || t("route.agentFallback");
@@ -139,19 +143,29 @@ export default function Routing({ trace }: Props) {
       description={t("route.desc")}
       labelledBy="routing-live-title"
       actions={
-        latest ? (
+        active ? (
           <div className="live-stats">
             <span><b>{fmt(routes.length)}</b> {t("route.requests")}</span>
             <span><b>{fmt(rerouted)}</b> {t("route.rerouted")}</span>
             <span><b className={failed ? "text-bad" : ""}>{fmt(failed)}</b> {t("route.errors")}</span>
-            <Badge tone="good" dot>{t("route.live")}</Badge>
+            {pinned ? (
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => setSelectedSeq(null)}
+              >
+                {t("route.latest")}
+              </button>
+            ) : (
+              <Badge tone="good" dot>{t("route.live")}</Badge>
+            )}
           </div>
         ) : (
           <Badge tone="neutral" dot>{t("route.waiting")}</Badge>
         )
       }
     >
-      {latest ? (
+      {active ? (
         <>
           <div className="rt-stage" ref={stageRef}>
             <svg className="rt-wires" ref={wiresRef} aria-hidden="true"></svg>
@@ -193,21 +207,23 @@ export default function Routing({ trace }: Props) {
 
           <div className="rt-cols">
             <div className="rt-trace">
-              <p className="rt-head">
-                {t("route.decision", { time: timeOf(latest.started_unix_ms) })}
-                <span className={latest.status === "ok" ? "text-good" : "text-bad"}>
-                  {requestCaption(latest, t)}
+              <div className="rt-head">
+                <span className="rt-head-left">
+                  {t("route.decision", { time: timeOf(active.started_unix_ms) })}
+                  <span className={active.status === "ok" ? "text-good" : "text-bad"}>
+                    {requestCaption(active, t)}
+                  </span>
                 </span>
-              </p>
+              </div>
               <ol className="rt-steps">
                 <li className="why">
-                  {latest.requested_model.startsWith("group/")
-                    ? t("route.askedGroup", { agent: latest.client_protocol, group: latest.requested_model })
-                    : t("route.askedModel", { agent: latest.client_protocol, model: latest.requested_model })}
+                  {active.requested_model.startsWith("group/")
+                    ? t("route.askedGroup", { agent: active.client_protocol, group: active.requested_model })
+                    : t("route.askedModel", { agent: active.client_protocol, model: active.requested_model })}
                 </li>
-                {latest.replans ? (
+                {active.replans ? (
                   <li className="aside">
-                    {t("route.replanned", { ms: latest.replan_waited_ms, n: latest.replans })}
+                    {t("route.replanned", { ms: active.replan_waited_ms, n: active.replans })}
                   </li>
                 ) : null}
                 {tries.map((tt, i) => {
@@ -218,21 +234,30 @@ export default function Routing({ trace }: Props) {
                     </li>
                   );
                 })}
-                {!tries.length && latest.status ? (
-                  <li className="bad">{t("route.nothingTried", { status: latest.status })}</li>
+                {!tries.length && active.status ? (
+                  <li className="bad">{t("route.nothingTried", { status: active.status })}</li>
                 ) : null}
               </ol>
             </div>
             <div className="rt-stream">
-              <p className="rt-head">{t("route.stream")}</p>
+              <div className="rt-head">
+                <span>{t("route.stream")}</span>
+                <span className="text-muted">{t("route.inspectHint")}</span>
+              </div>
               <div className="rt-reqs">
                 {routes
                   .slice(-40)
                   .reverse()
                   .map((r) => {
                     const n = (r.tries ?? []).length;
+                    const isActive = r.seq === active.seq;
                     return (
-                      <div key={r.seq} className={`rt-req ${r.status === "ok" ? "ok" : "bad"}`}>
+                      <button
+                        key={r.seq}
+                        type="button"
+                        className={`rt-req ${r.status === "ok" ? "ok" : "bad"}${isActive ? " active" : ""}`}
+                        onClick={() => setSelectedSeq(r.seq === latest?.seq ? null : (r.seq ?? null))}
+                      >
                         <span className="when">{timeOf(r.started_unix_ms)}</span>
                         <span className="what">
                           <b>{r.requested_model}</b>
@@ -243,7 +268,7 @@ export default function Routing({ trace }: Props) {
                           {r.latency_ms ? `${fmt(r.latency_ms)}ms` : ""}
                           <span className="state">{r.status || "…"}</span>
                         </span>
-                      </div>
+                      </button>
                     );
                   })}
               </div>

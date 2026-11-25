@@ -241,6 +241,35 @@ export function Switch({
   );
 }
 
+export function Tabs<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: T;
+  options: { value: T; label: ReactNode }[];
+  onChange: (value: T) => void;
+  label: string;
+}) {
+  return (
+    <div className="tabs" role="tablist" aria-label={label}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="tab"
+          aria-selected={option.value === value}
+          className="tab-btn"
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -352,6 +381,7 @@ export function Sheet({
           aria-labelledby="sheet-title"
           aria-busy={busy}
           autoComplete="off"
+          noValidate
           tabIndex={-1}
           onSubmit={onSubmit}
         >

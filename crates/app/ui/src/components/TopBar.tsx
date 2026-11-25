@@ -3,9 +3,6 @@ import { useLocale, useT, type Locale } from "../i18n";
 import type { ThemeChoice } from "./Sidebar";
 import StatusPill, { type GatewayState } from "./StatusPill";
 
-/* Astryx TopNav slot: compact bar carrying page context + global actions.
-   SideNav owns navigation; TopBar owns status and commands. */
-
 const THEME_ICONS: { id: ThemeChoice; icon: LucideIcon }[] = [
   { id: "system", icon: Monitor },
   { id: "light", icon: Sun },
@@ -25,7 +22,6 @@ const LANGS: { id: Locale; label: string }[] = [
 
 export default function TopBar({
   title,
-  subtitle,
   healthy,
   lastUpdate,
   refreshFailed,
@@ -38,7 +34,6 @@ export default function TopBar({
   setTheme,
 }: {
   title: string;
-  subtitle: string;
   healthy: boolean | null;
   lastUpdate: string | null;
   refreshFailed: boolean;
@@ -66,9 +61,10 @@ export default function TopBar({
 
   return (
     <header className="topbar">
-      <div className="topbar-context">
-        <strong>{title}</strong>
-        <span>{subtitle}</span>
+      <div className="topbar-breadcrumb" aria-label={title}>
+        <span className="topbar-crumb-root">magpie</span>
+        <span className="topbar-crumb-sep" aria-hidden="true">/</span>
+        <span className="topbar-crumb-cur">{title}</span>
       </div>
       <div className="topbar-actions">
         <StatusPill state={state} sync={sync} />
@@ -81,6 +77,7 @@ export default function TopBar({
             onChange={(e) => setAutoRefresh(e.target.checked)}
           />
           <span className="switch-track" aria-hidden="true" />
+          <span className="switch-label">{t("topbar.autoShort")}</span>
         </label>
         <button
           type="button"

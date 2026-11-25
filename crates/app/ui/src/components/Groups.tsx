@@ -18,10 +18,12 @@ import {
 } from "lucide-react";
 import * as api from "../api";
 import type { Config, GroupConfig, ModelsResponse, ProviderConfig, RoutingRule, Stats } from "../types";
-import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Switch } from "./ui";
+import { Badge, Card, Empty, Field, FormSection, Notice, PageHeader, Sheet, Switch, Tabs } from "./ui";
 import Select from "./Select";
 import { Input, Textarea } from "./Input";
 import { useT, type TFunc } from "../i18n";
+
+type GroupTab = "routes" | "rules" | "timing";
 
 const RULE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const RULE_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -283,9 +285,7 @@ function buildRule(draft: RuleDraft, t: TFunc): { rule?: RoutingRule; error?: st
     folders.length > 0 ||
     exceptFolders.length > 0;
   if (!hasCondition) {
-    return {
-      error: t("groups.errNoCond"),
-    };
+    return { error: t("groups.errNoCond") };
   }
   if (draft.pause && (tokens > 0 || draft.images || effort || useEffort || intent || draft.compact)) {
     return { error: t("groups.errPause") };
@@ -309,6 +309,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   const t = useT();
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState<{ id: string | null; draft: Draft } | null>(null);
+  const [tab, setTab] = useState<GroupTab>("routes");
   const [ruleEditing, setRuleEditing] = useState<{ index: number | null; draft: RuleDraft } | null>(null);
   const [ruleError, setRuleError] = useState("");
   const [vision, setVision] = useState("");
@@ -365,9 +366,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       "/config/found-groups",
       "PUT",
       { on: foundOff },
-      foundOff
-        ? t("groups.foundOn")
-        : t("groups.foundOff"),
+      foundOff ? t("groups.foundOn") : t("groups.foundOff"),
     );
     if (ok) onChanged();
   }
@@ -393,6 +392,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   function openEditor(group?: GroupConfig) {
     if (busy) return;
     setEditing({ id: group?.id ?? null, draft: group ? draftFrom(group, providers) : emptyDraft() });
+    setTab("routes");
     setRuleEditing(null);
     setRuleError("");
     setMessage("");
@@ -424,8 +424,6 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       const next = last && !last.provider && providers.length
         ? { ...blankMember(), provider: providers[0].id }
         : blankMember();
-      // Keep the chosen model when adding another supplier for it: copy
-      // the last row's model so the same model on a new provider is one click.
       if (last?.model && !next.model) next.model = last.model;
       return { ...prev, draft: { ...prev.draft, members: [...prev.draft.members, next] } };
     });
@@ -456,8 +454,14 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     e.preventDefault();
     if (busy || !editing) return;
     const draft = editing.draft;
+    if (!draft.id.trim()) {
+      setTab("routes");
+      setMessage(t("groups.fIdHelp"));
+      return;
+    }
     const routes = draft.members.map(serializeMember).filter(Boolean);
     if (!routes.length) {
+      setTab("routes");
       setMessage(t("groups.errNoRoutes"));
       return;
     }
@@ -466,14 +470,14 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       return hasAny && !serializeMember(m);
     });
     if (incomplete) {
+      setTab("routes");
       setMessage(t("groups.errIncomplete"));
       return;
     }
     const stale = draft.rules.find((rule) => !rule.use || !routes.includes(rule.use));
     if (stale) {
-      setMessage(
-        t("groups.errStale", { use: stale.use || t("groups.missingRoute") }),
-      );
+      setTab("rules");
+      setMessage(t("groups.errStale", { use: stale.use || t("groups.missingRoute") }));
       const index = draft.rules.indexOf(stale);
       setRuleEditing({
         index,
@@ -498,9 +502,8 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     }
     const classifier = draft.classifier.trim();
     if (draft.rules.some((rule) => rule.intent) && !classifier) {
-      setMessage(
-        t("groups.errNeedClassifier"),
-      );
+      setTab("rules");
+      setMessage(t("groups.errNeedClassifier"));
       return;
     }
     const levels = draft.levels
@@ -509,18 +512,19 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
       .filter(Boolean);
     const unknown = levels.find((level) => !LEVELS.includes(level));
     if (unknown) {
-      setMessage(
-        t("groups.errBadLevel", { v: unknown }),
-      );
+      setTab("rules");
+      setMessage(t("groups.errBadLevel", { v: unknown }));
       return;
     }
     const firstToken = draft.firstToken.trim() === "" ? 0 : Number(draft.firstToken);
     if (!Number.isSafeInteger(firstToken) || firstToken < 0) {
+      setTab("timing");
       setMessage(t("groups.errFirstToken"));
       return;
     }
     const patience = draft.patience.trim() === "" ? null : Number(draft.patience);
     if (patience !== null && !Number.isSafeInteger(patience)) {
+      setTab("timing");
       setMessage(t("groups.errPatience"));
       return;
     }
@@ -542,6 +546,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
     if (draft.routing === "weight") {
       const weights = draft.members.map((m) => (m.weight.trim() === "" ? 1 : Number(m.weight)));
       if (weights.some((weight) => !Number.isSafeInteger(weight) || weight < 0 || weight > 1000)) {
+        setTab("routes");
         setMessage(t("groups.errWeights"));
         return;
       }
@@ -692,419 +697,6 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
   const hiddenGroups = groups.filter((group) => group.hidden);
   const visionNote = visionWarning || visionMessage;
 
-
-  const editorForm = draft && editing ? (
-    <form className="editor" onSubmit={saveGroup} autoComplete="off">
-      <div className="editor-head">
-        <h3>{editing.id === null ? t("groups.newTitle") : t("groups.editTitle")}</h3>
-        {editing.id ? <span className="sub"><code>group/{editing.id}</code></span> : null}
-      </div>
-      <div className="editor-body">
-        {message ? (
-          <Notice tone="accent" icon={<Info size={16} />} live>
-            {message}
-          </Notice>
-        ) : null}
-
-            <FormSection title={t("groups.secIdentity")}>
-              <div className="form-grid">
-                <Field label={t("groups.fId")} htmlFor="group-id"
-                  help={t("groups.fIdHelp")}>
-                  <Input id="group-id" mono required pattern="[A-Za-z0-9_-]+"
-                    placeholder="daily-coding" readOnly={editing.id !== null}
-                    value={draft.id} onChange={(e) => patchDraft({ id: e.target.value })} />
-                </Field>
-                <Field label={t("groups.fName")} htmlFor="group-name" help={t("groups.fNameHelp")}>
-                  <Input id="group-name" placeholder="Daily coding"
-                    value={draft.name} onChange={(e) => patchDraft({ name: e.target.value })} />
-                </Field>
-              </div>
-            </FormSection>
-
-            <FormSection title={t("groups.secMembers")} description={t("groups.secMembersDesc")}>
-              <div className="member-list" role="list" aria-label={t("groups.fRoutes")}>
-                {draft.members.map((member, index) => {
-                  const options = providers.find((p) => p.id === member.provider)?.models ?? [];
-                  const listId = `group-member-model-${editing.id ?? "new"}-${index}`;
-                  return (
-                    <div className="member-row-edit" role="listitem" key={index}>
-                      <span className="step">{index + 1}</span>
-                      <label className="member-field">
-                        <span>{t("groups.memberProvider")}</span>
-                        <Select
-                          mono
-                          value={member.provider}
-                          aria-label={t("groups.memberProvider")}
-                          onChange={(value) => patchMember(index, { provider: value })}
-                          options={[
-                            { value: "", label: "" },
-                            ...providers.map((p) => ({
-                              value: p.id,
-                              label: p.name ? `${p.id} · ${p.name}` : p.id,
-                            })),
-                            ...(member.provider && !providers.some((p) => p.id === member.provider)
-                              ? [{ value: member.provider, label: member.provider }]
-                              : []),
-                          ]}
-                        />
-                      </label>
-                      <label className="member-field grow">
-                        <span>{t("groups.memberModel")}</span>
-                        <Input
-                          mono
-                          list={listId}
-                          placeholder="deepseek-chat"
-                          spellCheck={false}
-                          value={member.model}
-                          aria-label={t("groups.memberModel")}
-                          onChange={(e) => patchMember(index, { model: e.target.value })}
-                        />
-                        <datalist id={listId}>
-                          {options.map((m) => (
-                            <option key={m} value={m} />
-                          ))}
-                        </datalist>
-                      </label>
-                      <label className="member-field small">
-                        <span>{t("groups.memberLevel")}</span>
-                        <Select
-                          value={member.level}
-                          aria-label={t("groups.memberLevel")}
-                          onChange={(value) => patchMember(index, { level: value })}
-                          options={[
-                            { value: "", label: t("groups.memberLevelAny") },
-                            ...LEVELS.map((level) => ({ value: level, label: level })),
-                          ]}
-                        />
-                      </label>
-                      {draft.routing === "weight" ? (
-                        <label className="member-field tiny">
-                          <span>{t("groups.memberWeight")}</span>
-                          <Input
-                            type="number"
-                            min="0"
-                            max="1000"
-                            step="1"
-                            placeholder="1"
-                            value={member.weight}
-                            aria-label={t("groups.memberWeight")}
-                            onChange={(e) => patchMember(index, { weight: e.target.value })}
-                          />
-                        </label>
-                      ) : null}
-                      <span className="member-id mono" data-tip={serializeMember(member) || "provider/model"}>
-                        {serializeMember(member) || <span className="text-muted">provider/model</span>}
-                      </span>
-                      <span className="member-actions">
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          disabled={index === 0}
-                          data-tip={t("groups.memberUp")}
-                          aria-label={t("groups.memberUp")}
-                          onClick={() => moveMember(index, -1)}
-                        >
-                          <ArrowUp size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          disabled={index === draft.members.length - 1}
-                          data-tip={t("groups.memberDown")}
-                          aria-label={t("groups.memberDown")}
-                          onClick={() => moveMember(index, 1)}
-                        >
-                          <ArrowDown size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn danger"
-                          data-tip={t("groups.memberRemove")}
-                          aria-label={t("groups.memberRemove")}
-                          onClick={() => removeMember(index)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="member-foot">
-                <button type="button" className="btn dashed sm" onClick={addMember}>
-                  <Plus size={14} aria-hidden="true" />
-                  {t("groups.memberAdd")}
-                </button>
-                <span className="help">{t("groups.fRoutesHelp")}</span>
-              </div>
-            </FormSection>
-
-            <FormSection title={t("groups.secPolicy")}>
-              <div className="form-grid">
-                <Field label={t("groups.fPolicy")} htmlFor="group-routing" help={policyHelp(draft.routing, t)}>
-                  <Select id="group-routing"
-                    value={draft.routing} onChange={(value) => patchDraft({ routing: value })}
-                    options={[
-                      { value: "order", label: t("groups.policyOrder") },
-                      { value: "rotate", label: t("groups.policyRotate") },
-                      { value: "usage", label: t("groups.policyUsage") },
-                      { value: "free_first", label: t("groups.policyFreeFirst") },
-                      { value: "weight", label: t("groups.policyWeight") },
-                      { value: "manual", label: t("groups.policyManual") },
-                    ]}
-                  />
-                </Field>
-                <Field label={t("groups.fAffinity")} htmlFor="group-affinity"
-                  help={t("groups.affinityHelp")}>
-                  <Select id="group-affinity"
-                    value={draft.affinity} onChange={(value) => patchDraft({ affinity: value })}
-                    options={[
-                      { value: "auto", label: t("prov.optAuto") },
-                      { value: "session", label: t("prov.optSession") },
-                      { value: "turn", label: t("prov.optTurn") },
-                      { value: "off", label: t("prov.optOff") },
-                    ]}
-                  />
-                </Field>
-                <Field label={t("groups.fPick")} htmlFor="group-pick" hidden={draft.routing !== "manual"}
-                  help={t("groups.fPickHelp")}>
-                  <Select id="group-pick" mono
-                    value={memberRoutes.includes(draft.pick.trim()) ? draft.pick.trim() : ""}
-                    onChange={(value) => patchDraft({ pick: value })}
-                    options={[
-                      { value: "", label: t("groups.pickFirst") },
-                      ...memberRoutes.filter(Boolean).map((route) => ({ value: route, label: route })),
-                    ]}
-                  />
-                </Field>
-                {draft.routing === "weight" ? (
-                  <p className="help span-all">{t("groups.fWeightsHelp")}</p>
-                ) : null}
-              </div>
-            </FormSection>
-
-            <FormSection title={t("groups.secTiming")}>
-              <div className="form-grid">
-                <Field label={t("groups.fFirstToken")} htmlFor="group-first-token"
-                  help={t("groups.fFirstTokenHelp")}>
-                  <Input id="group-first-token" type="number" min="0"
-                    max="9007199254740991" step="1" required
-                    value={draft.firstToken} onChange={(e) => patchDraft({ firstToken: e.target.value })} />
-                </Field>
-                <Field label={t("groups.fPatience")} htmlFor="group-patience"
-                  help={t("groups.fPatienceHelp")}>
-                  <Input id="group-patience" type="number" min="-9007199254740991"
-                    max="9007199254740991" step="1" placeholder={t("groups.patiencePh")}
-                    value={draft.patience} onChange={(e) => patchDraft({ patience: e.target.value })} />
-                </Field>
-              </div>
-            </FormSection>
-
-            <FormSection title={t("groups.secReasoning")}>
-              <div className="form-grid three">
-                <Field label={t("groups.fClassifier")} htmlFor="group-classifier"
-                  help={t("groups.fClassifierHelp")}>
-                  <div className="classifier-pick">
-                    <Select
-                      mono
-                      aria-label={t("groups.memberProvider")}
-                      value={classifierParts.provider}
-                      onChange={(value) => {
-                        const next = value ? `${value}/${classifierParts.model}`.replace(/\/$/, "") : classifierParts.model;
-                        patchDraft({ classifier: value && classifierParts.model ? `${value}/${classifierParts.model}` : next });
-                      }}
-                      options={[
-                        { value: "", label: "" },
-                        ...providers.map((p) => ({ value: p.id, label: p.id })),
-                        ...(classifierParts.provider && !providers.some((p) => p.id === classifierParts.provider)
-                          ? [{ value: classifierParts.provider, label: classifierParts.provider }]
-                          : []),
-                      ]}
-                    />
-                    <Input mono
-                      id="group-classifier"
-                      
-                      list="group-classifier-models"
-                      placeholder="deepseek-chat"
-                      spellCheck={false}
-                      aria-label={t("groups.memberModel")}
-                      value={classifierParts.model}
-                      onChange={(e) => {
-                        const model = e.target.value;
-                        patchDraft({ classifier: classifierParts.provider && model ? `${classifierParts.provider}/${model}` : model });
-                      }}
-                    />
-                    <datalist id="group-classifier-models">
-                      {allModelOptions
-                        .filter((o) => !classifierParts.provider || o.provider === classifierParts.provider)
-                        .map((o) => (
-                          <option key={`${o.provider}/${o.model}`} value={o.model}>
-                            {`${o.provider}/${o.model}`}
-                          </option>
-                        ))}
-                    </datalist>
-                  </div>
-                  <p className="mono-preview">{draft.classifier.trim() || <span className="text-muted">provider/model</span>}</p>
-                </Field>
-                <Field label={t("groups.fEffort")} htmlFor="group-effort"
-                  help={t("groups.fEffortHelp")}>
-                  <Select id="group-effort"
-                    value={draft.effort} onChange={(value) => patchDraft({ effort: value })}
-                    options={[
-                      { value: "", label: t("groups.effortChoice") },
-                      { value: "auto", label: t("groups.effortAuto") },
-                    ]}
-                  />
-                </Field>
-                <Field label={t("groups.fLevels")} htmlFor="group-levels"
-                  help={t("groups.fLevelsHelp")}>
-                  <Input mono id="group-levels"  placeholder="low, high" spellCheck={false}
-                    value={draft.levels} onChange={(e) => patchDraft({ levels: e.target.value })} />
-                </Field>
-              </div>
-            </FormSection>
-
-            <FormSection
-              title={t("groups.secRules")}
-              description={t("groups.secRulesDesc")}
-            >
-              {draft.rules.length ? (
-                <ol className="rule-list" aria-label={t("groups.ruleAria")}>
-                  {draft.rules.map((item, index) => (
-                    <li key={index} className={ruleEditing?.index === index ? "editing" : ""}>
-                      <span className="step">{index + 1}</span>
-                      <span className="rule-text">{describeRule(item, index, t)}</span>
-                      <button type="button" className="icon-btn" aria-label={t("groups.editRuleAria", { n: index + 1 })}
-                        data-tip={t("groups.editRule")} onClick={() => openRule(index)}>
-                        <Pencil size={14} />
-                      </button>
-                      <button type="button" className="icon-btn danger" aria-label={t("groups.delRuleAria", { n: index + 1 })}
-                        data-tip={t("groups.delRule")} onClick={() => deleteRule(index)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="text-muted">{t("groups.noRules")}</p>
-              )}
-
-              {rule && ruleEditing ? (
-                <div className="rule-form">
-                  <p className="rule-form-title">
-                    {ruleEditing.index === null ? t("groups.newRule") : t("groups.ruleTitle", { n: ruleEditing.index + 1 })}
-                  </p>
-                  <Field label={t("groups.fSendTo")} htmlFor="rule-use"
-                    help={t("groups.fSendToHelp")}>
-                    <Select id="rule-use" mono value={rule.use}
-                      onChange={(value) => patchRule({ use: value })}
-                      options={[
-                        { value: "", label: "" },
-                        ...ruleUses.filter((route): route is string => Boolean(route)).map((route) => ({ value: route, label: route })),
-                      ]}
-                    />
-                  </Field>
-                  <p className="rule-form-sub">{t("groups.whenMatch")}</p>
-                  <div className="form-grid four">
-                    <Field label={t("groups.fTokens")} htmlFor="rule-tokens">
-                      <Input id="rule-tokens"  type="number" min="0" step="1" placeholder="0"
-                        value={rule.tokens} onChange={(e) => patchRule({ tokens: e.target.value })} />
-                    </Field>
-                    <Field label={t("groups.fReasoning")} htmlFor="rule-effort">
-                      <Select id="rule-effort" value={rule.effort}
-                        onChange={(value) => patchRule({ effort: value })}
-                        options={[
-                          { value: "", label: t("groups.effortAny") },
-                          { value: "on", label: t("groups.effortAnyReasoning") },
-                          ...RULE_EFFORTS.map((effort) => ({
-                            value: effort,
-                            label: t("groups.effortOrMore", { v: effort }),
-                          })),
-                        ]}
-                      />
-                    </Field>
-                    <Field label={t("groups.fAgents")} htmlFor="rule-agents">
-                      <Input id="rule-agents"  placeholder="claude, codex" spellCheck={false}
-                        value={rule.agents} onChange={(e) => patchRule({ agents: e.target.value })} />
-                    </Field>
-                    <Field label={t("groups.fIntent")} htmlFor="rule-intent">
-                      <Input id="rule-intent"  placeholder="research" spellCheck={false}
-                        value={rule.intent} onChange={(e) => patchRule({ intent: e.target.value })} />
-                    </Field>
-                    <Field label={t("groups.fBetween")} htmlFor="rule-time-from">
-                      <Input mono id="rule-time-from"  placeholder="22:00" spellCheck={false}
-                        value={rule.from} onChange={(e) => patchRule({ from: e.target.value })} />
-                    </Field>
-                    <Field label={t("groups.fAnd")} htmlFor="rule-time-to">
-                      <Input mono id="rule-time-to"  placeholder="08:00" spellCheck={false}
-                        value={rule.to} onChange={(e) => patchRule({ to: e.target.value })} />
-                    </Field>
-                    <Field label={t("groups.fDays")} htmlFor="rule-days">
-                      <Input id="rule-days"  placeholder="mon, tue" spellCheck={false}
-                        value={rule.days} onChange={(e) => patchRule({ days: e.target.value })} />
-                    </Field>
-                    <Field label={t("groups.fAskEffort")} htmlFor="rule-use-effort">
-                      <Select id="rule-use-effort" value={rule.useEffort}
-                        onChange={(value) => patchRule({ useEffort: value })}
-                        options={[
-                          { value: "", label: t("groups.effortUnchanged") },
-                          ...RULE_EFFORTS.map((effort) => ({ value: effort, label: effort })),
-                        ]}
-                      />
-                    </Field>
-                  </div>
-                  <div className="form-grid">
-                    <Field label={t("groups.fFolderIn")} htmlFor="rule-folders"
-                      help={t("groups.fFolderInHelp")}>
-                      <Textarea mono id="rule-folders"  rows={2} placeholder="/home/user/project"
-                        spellCheck={false} value={rule.folders} onChange={(e) => patchRule({ folders: e.target.value })} />
-                    </Field>
-                    <Field label={t("groups.fFolderOut")} htmlFor="rule-except-folders">
-                      <Textarea mono id="rule-except-folders"  rows={2} placeholder="/home/user/scratch"
-                        value={rule.exceptFolders} onChange={(e) => patchRule({ exceptFolders: e.target.value })} />
-                    </Field>
-                  </div>
-                  <div className="check-chips">
-                    <label><input type="checkbox" checked={rule.images} onChange={(e) => patchRule({ images: e.target.checked })} /><span>{t("groups.chipImage")}</span></label>
-                    <label><input type="checkbox" checked={rule.compact} onChange={(e) => patchRule({ compact: e.target.checked })} /><span>{t("groups.chipCompact")}</span></label>
-                    <label><input type="checkbox" checked={rule.pause} onChange={(e) => patchRule({ pause: e.target.checked })} /><span>{t("groups.chipPause")}</span></label>
-                  </div>
-                  <p className={`rule-error${ruleError ? " shown" : ""}`} role="status" aria-live="polite">
-                    {ruleError}
-                  </p>
-                  <div className="rule-form-actions">
-                    <button type="button" className="btn ghost sm" onClick={() => { setRuleEditing(null); setRuleError(""); }}>
-                      {t("common.cancel")}
-                    </button>
-                    <button type="button" className="btn sm" onClick={saveRule}>
-                      <Check size={14} aria-hidden="true" />
-                      {t("groups.saveRule")}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button type="button" className="btn dashed" onClick={() => openRule(null)}>
-                  <Plus size={14} aria-hidden="true" />
-                  {t("groups.addRule")}
-                </button>
-              )}
-              <p className="help">
-                {t("groups.ruleFoot")}
-              </p>
-            </FormSection>
-      </div>
-      <div className="editor-foot">
-        <button type="button" className="btn ghost" disabled={busy} onClick={closeEditor}>
-          {t("common.cancel")}
-        </button>
-        <span className="spacer" />
-        <button type="submit" className="btn primary" disabled={busy}>
-          {busy ? t("common.saving") : t("groups.saveGroup")}
-        </button>
-      </div>
-    </form>
-  ) : null;
-
   return (
     <>
       <PageHeader
@@ -1128,15 +720,12 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
               <label htmlFor="vision-model">
                 <ImageIcon size={14} aria-hidden="true" /> {t("groups.vision")}
               </label>
-              <p>
-                {t("groups.visionDesc")}
-              </p>
+              <p>{t("groups.visionDesc")}</p>
             </div>
             <div className="setting-control">
               <div className="input-group">
                 <Input mono
                   id="vision-model"
-                  
                   list="agent-model-options"
                   placeholder={t("groups.visionPh")}
                   spellCheck={false}
@@ -1162,9 +751,7 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
               <span className="field-label">
                 <ScanSearch size={14} aria-hidden="true" /> {t("groups.found")}
               </span>
-              <p>
-                {t("groups.foundDesc")}
-              </p>
+              <p>{t("groups.foundDesc")}</p>
             </div>
             <div className="setting-control end">
               <Switch checked={!foundOff} disabled={busy || config === null} onChange={() => toggleFound()}>
@@ -1181,7 +768,425 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
         </Notice>
       ) : null}
 
-      {editing?.id === null ? <Card flush>{editorForm}</Card> : null}
+      <Sheet
+        open={editing !== null}
+        wide
+        onClose={closeEditor}
+        busy={busy}
+        title={editing?.id === null ? t("groups.newTitle") : t("groups.editTitle")}
+        description={editing?.id ? `group/${editing.id}` : undefined}
+        icon={<Waypoints size={18} />}
+        onSubmit={saveGroup}
+        footer={
+          <>
+            <button type="button" className="btn ghost" disabled={busy} onClick={closeEditor}>
+              {t("common.cancel")}
+            </button>
+            <span className="spacer" />
+            <button type="submit" className="btn primary" disabled={busy}>
+              {busy ? t("common.saving") : t("groups.saveGroup")}
+            </button>
+          </>
+        }
+      >
+        {editing && draft ? (
+          <>
+            {message ? (
+              <Notice tone="accent" icon={<Info size={16} />} live>
+                {message}
+              </Notice>
+            ) : null}
+
+            <Tabs<GroupTab>
+              label={t("groups.editTitle")}
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "routes", label: t("groups.tabRoutes") },
+                { value: "rules", label: t("groups.tabRules") },
+                { value: "timing", label: t("groups.tabAdvanced") },
+              ]}
+            />
+
+            <div hidden={tab !== "routes"} className="form-section-body">
+              <FormSection title={t("groups.secIdentity")}>
+                <div className="form-grid">
+                  <Field label={t("groups.fId")} htmlFor="group-id" help={t("groups.fIdHelp")}>
+                    <Input id="group-id" mono pattern="[A-Za-z0-9_-]+"
+                      placeholder="daily-coding" readOnly={editing.id !== null}
+                      value={draft.id} onChange={(e) => patchDraft({ id: e.target.value })} />
+                  </Field>
+                  <Field label={t("groups.fName")} htmlFor="group-name" help={t("groups.fNameHelp")}>
+                    <Input id="group-name" placeholder="Daily coding"
+                      value={draft.name} onChange={(e) => patchDraft({ name: e.target.value })} />
+                  </Field>
+                </div>
+              </FormSection>
+
+              <FormSection title={t("groups.secMembers")} description={t("groups.secMembersDesc")}>
+                <div className="member-list" role="list" aria-label={t("groups.fRoutes")}>
+                  {draft.members.map((member, index) => {
+                    const options = providers.find((p) => p.id === member.provider)?.models ?? [];
+                    const listId = `group-member-model-${editing.id ?? "new"}-${index}`;
+                    return (
+                      <div className="member-row-edit" role="listitem" key={index}>
+                        <span className="step">{index + 1}</span>
+                        <label className="member-field">
+                          <span>{t("groups.memberProvider")}</span>
+                          <Select
+                            mono
+                            value={member.provider}
+                            aria-label={t("groups.memberProvider")}
+                            onChange={(value) => patchMember(index, { provider: value })}
+                            options={[
+                              { value: "", label: "" },
+                              ...providers.map((p) => ({
+                                value: p.id,
+                                label: p.name ? `${p.id} · ${p.name}` : p.id,
+                              })),
+                              ...(member.provider && !providers.some((p) => p.id === member.provider)
+                                ? [{ value: member.provider, label: member.provider }]
+                                : []),
+                            ]}
+                          />
+                        </label>
+                        <label className="member-field grow">
+                          <span>{t("groups.memberModel")}</span>
+                          <Input
+                            mono
+                            list={listId}
+                            placeholder="deepseek-chat"
+                            spellCheck={false}
+                            value={member.model}
+                            aria-label={t("groups.memberModel")}
+                            onChange={(e) => patchMember(index, { model: e.target.value })}
+                          />
+                          <datalist id={listId}>
+                            {options.map((m) => (
+                              <option key={m} value={m} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <label className="member-field small">
+                          <span>{t("groups.memberLevel")}</span>
+                          <Select
+                            value={member.level}
+                            aria-label={t("groups.memberLevel")}
+                            onChange={(value) => patchMember(index, { level: value })}
+                            options={[
+                              { value: "", label: t("groups.memberLevelAny") },
+                              ...LEVELS.map((level) => ({ value: level, label: level })),
+                            ]}
+                          />
+                        </label>
+                        {draft.routing === "weight" ? (
+                          <label className="member-field tiny">
+                            <span>{t("groups.memberWeight")}</span>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="1000"
+                              step="1"
+                              placeholder="1"
+                              value={member.weight}
+                              aria-label={t("groups.memberWeight")}
+                              onChange={(e) => patchMember(index, { weight: e.target.value })}
+                            />
+                          </label>
+                        ) : null}
+                        <span className="member-id mono" data-tip={serializeMember(member) || "provider/model"}>
+                          {serializeMember(member) || <span className="text-muted">provider/model</span>}
+                        </span>
+                        <span className="member-actions">
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            disabled={index === 0}
+                            data-tip={t("groups.memberUp")}
+                            aria-label={t("groups.memberUp")}
+                            onClick={() => moveMember(index, -1)}
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            disabled={index === draft.members.length - 1}
+                            data-tip={t("groups.memberDown")}
+                            aria-label={t("groups.memberDown")}
+                            onClick={() => moveMember(index, 1)}
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn danger"
+                            data-tip={t("groups.memberRemove")}
+                            aria-label={t("groups.memberRemove")}
+                            onClick={() => removeMember(index)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="member-foot">
+                  <button type="button" className="btn dashed sm" onClick={addMember}>
+                    <Plus size={14} aria-hidden="true" />
+                    {t("groups.memberAdd")}
+                  </button>
+                  <span className="help">{t("groups.fRoutesHelp")}</span>
+                </div>
+              </FormSection>
+
+              <FormSection title={t("groups.secPolicy")}>
+                <div className="form-grid">
+                  <Field label={t("groups.fPolicy")} htmlFor="group-routing" help={policyHelp(draft.routing, t)}>
+                    <Select id="group-routing"
+                      value={draft.routing} onChange={(value) => patchDraft({ routing: value })}
+                      options={[
+                        { value: "order", label: t("groups.policyOrder") },
+                        { value: "rotate", label: t("groups.policyRotate") },
+                        { value: "usage", label: t("groups.policyUsage") },
+                        { value: "free_first", label: t("groups.policyFreeFirst") },
+                        { value: "weight", label: t("groups.policyWeight") },
+                        { value: "manual", label: t("groups.policyManual") },
+                      ]}
+                    />
+                  </Field>
+                  <Field label={t("groups.fAffinity")} htmlFor="group-affinity" help={t("groups.affinityHelp")}>
+                    <Select id="group-affinity"
+                      value={draft.affinity} onChange={(value) => patchDraft({ affinity: value })}
+                      options={[
+                        { value: "auto", label: t("prov.optAuto") },
+                        { value: "session", label: t("prov.optSession") },
+                        { value: "turn", label: t("prov.optTurn") },
+                        { value: "off", label: t("prov.optOff") },
+                      ]}
+                    />
+                  </Field>
+                  <Field label={t("groups.fPick")} htmlFor="group-pick" hidden={draft.routing !== "manual"} help={t("groups.fPickHelp")}>
+                    <Select id="group-pick" mono
+                      value={memberRoutes.includes(draft.pick.trim()) ? draft.pick.trim() : ""}
+                      onChange={(value) => patchDraft({ pick: value })}
+                      options={[
+                        { value: "", label: t("groups.pickFirst") },
+                        ...memberRoutes.filter(Boolean).map((route) => ({ value: route, label: route })),
+                      ]}
+                    />
+                  </Field>
+                  {draft.routing === "weight" ? (
+                    <p className="help span-all">{t("groups.fWeightsHelp")}</p>
+                  ) : null}
+                </div>
+              </FormSection>
+            </div>
+
+            <div hidden={tab !== "rules"} className="form-section-body">
+              <FormSection title={t("groups.secReasoning")}>
+                <div className="form-grid three">
+                  <Field label={t("groups.fClassifier")} htmlFor="group-classifier" help={t("groups.fClassifierHelp")}>
+                    <div className="classifier-pick">
+                      <Select
+                        mono
+                        aria-label={t("groups.memberProvider")}
+                        value={classifierParts.provider}
+                        onChange={(value) => {
+                          const next = value ? `${value}/${classifierParts.model}`.replace(/\/$/, "") : classifierParts.model;
+                          patchDraft({ classifier: value && classifierParts.model ? `${value}/${classifierParts.model}` : next });
+                        }}
+                        options={[
+                          { value: "", label: "" },
+                          ...providers.map((p) => ({ value: p.id, label: p.id })),
+                          ...(classifierParts.provider && !providers.some((p) => p.id === classifierParts.provider)
+                            ? [{ value: classifierParts.provider, label: classifierParts.provider }]
+                            : []),
+                        ]}
+                      />
+                      <Input mono
+                        id="group-classifier"
+                        list="group-classifier-models"
+                        placeholder="deepseek-chat"
+                        spellCheck={false}
+                        aria-label={t("groups.memberModel")}
+                        value={classifierParts.model}
+                        onChange={(e) => {
+                          const model = e.target.value;
+                          patchDraft({ classifier: classifierParts.provider && model ? `${classifierParts.provider}/${model}` : model });
+                        }}
+                      />
+                      <datalist id="group-classifier-models">
+                        {allModelOptions
+                          .filter((o) => !classifierParts.provider || o.provider === classifierParts.provider)
+                          .map((o) => (
+                            <option key={`${o.provider}/${o.model}`} value={o.model}>
+                              {`${o.provider}/${o.model}`}
+                            </option>
+                          ))}
+                      </datalist>
+                    </div>
+                    <p className="mono-preview">{draft.classifier.trim() || <span className="text-muted">provider/model</span>}</p>
+                  </Field>
+                  <Field label={t("groups.fEffort")} htmlFor="group-effort" help={t("groups.fEffortHelp")}>
+                    <Select id="group-effort"
+                      value={draft.effort} onChange={(value) => patchDraft({ effort: value })}
+                      options={[
+                        { value: "", label: t("groups.effortChoice") },
+                        { value: "auto", label: t("groups.effortAuto") },
+                      ]}
+                    />
+                  </Field>
+                  <Field label={t("groups.fLevels")} htmlFor="group-levels" help={t("groups.fLevelsHelp")}>
+                    <Input mono id="group-levels" placeholder="low, high" spellCheck={false}
+                      value={draft.levels} onChange={(e) => patchDraft({ levels: e.target.value })} />
+                  </Field>
+                </div>
+              </FormSection>
+
+              <FormSection title={t("groups.secRules")} description={t("groups.secRulesDesc")}>
+                {draft.rules.length ? (
+                  <ol className="rule-list" aria-label={t("groups.ruleAria")}>
+                    {draft.rules.map((item, index) => (
+                      <li key={index} className={ruleEditing?.index === index ? "editing" : ""}>
+                        <span className="step">{index + 1}</span>
+                        <span className="rule-text">{describeRule(item, index, t)}</span>
+                        <button type="button" className="icon-btn" aria-label={t("groups.editRuleAria", { n: index + 1 })}
+                          data-tip={t("groups.editRule")} onClick={() => openRule(index)}>
+                          <Pencil size={14} />
+                        </button>
+                        <button type="button" className="icon-btn danger" aria-label={t("groups.delRuleAria", { n: index + 1 })}
+                          data-tip={t("groups.delRule")} onClick={() => deleteRule(index)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-muted">{t("groups.noRules")}</p>
+                )}
+
+                {rule && ruleEditing ? (
+                  <div className="rule-form">
+                    <p className="rule-form-title">
+                      {ruleEditing.index === null ? t("groups.newRule") : t("groups.ruleTitle", { n: ruleEditing.index + 1 })}
+                    </p>
+                    <Field label={t("groups.fSendTo")} htmlFor="rule-use" help={t("groups.fSendToHelp")}>
+                      <Select id="rule-use" mono value={rule.use}
+                        onChange={(value) => patchRule({ use: value })}
+                        options={[
+                          { value: "", label: "" },
+                          ...ruleUses.filter((r): r is string => Boolean(r)).map((r) => ({ value: r, label: r })),
+                        ]}
+                      />
+                    </Field>
+                    <p className="rule-form-sub">{t("groups.whenMatch")}</p>
+                    <div className="form-grid four">
+                      <Field label={t("groups.fTokens")} htmlFor="rule-tokens">
+                        <Input id="rule-tokens" type="number" min="0" step="1" placeholder="0"
+                          value={rule.tokens} onChange={(e) => patchRule({ tokens: e.target.value })} />
+                      </Field>
+                      <Field label={t("groups.fReasoning")} htmlFor="rule-effort">
+                        <Select id="rule-effort" value={rule.effort}
+                          onChange={(value) => patchRule({ effort: value })}
+                          options={[
+                            { value: "", label: t("groups.effortAny") },
+                            { value: "on", label: t("groups.effortAnyReasoning") },
+                            ...RULE_EFFORTS.map((effort) => ({
+                              value: effort,
+                              label: t("groups.effortOrMore", { v: effort }),
+                            })),
+                          ]}
+                        />
+                      </Field>
+                      <Field label={t("groups.fAgents")} htmlFor="rule-agents">
+                        <Input id="rule-agents" placeholder="claude, codex" spellCheck={false}
+                          value={rule.agents} onChange={(e) => patchRule({ agents: e.target.value })} />
+                      </Field>
+                      <Field label={t("groups.fIntent")} htmlFor="rule-intent">
+                        <Input id="rule-intent" placeholder="research" spellCheck={false}
+                          value={rule.intent} onChange={(e) => patchRule({ intent: e.target.value })} />
+                      </Field>
+                      <Field label={t("groups.fBetween")} htmlFor="rule-time-from">
+                        <Input mono id="rule-time-from" placeholder="22:00" spellCheck={false}
+                          value={rule.from} onChange={(e) => patchRule({ from: e.target.value })} />
+                      </Field>
+                      <Field label={t("groups.fAnd")} htmlFor="rule-time-to">
+                        <Input mono id="rule-time-to" placeholder="08:00" spellCheck={false}
+                          value={rule.to} onChange={(e) => patchRule({ to: e.target.value })} />
+                      </Field>
+                      <Field label={t("groups.fDays")} htmlFor="rule-days">
+                        <Input id="rule-days" placeholder="mon, tue" spellCheck={false}
+                          value={rule.days} onChange={(e) => patchRule({ days: e.target.value })} />
+                      </Field>
+                      <Field label={t("groups.fAskEffort")} htmlFor="rule-use-effort">
+                        <Select id="rule-use-effort" value={rule.useEffort}
+                          onChange={(value) => patchRule({ useEffort: value })}
+                          options={[
+                            { value: "", label: t("groups.effortUnchanged") },
+                            ...RULE_EFFORTS.map((effort) => ({ value: effort, label: effort })),
+                          ]}
+                        />
+                      </Field>
+                    </div>
+                    <div className="form-grid">
+                      <Field label={t("groups.fFolderIn")} htmlFor="rule-folders" help={t("groups.fFolderInHelp")}>
+                        <Textarea mono id="rule-folders" rows={2} placeholder="/home/user/project"
+                          spellCheck={false} value={rule.folders} onChange={(e) => patchRule({ folders: e.target.value })} />
+                      </Field>
+                      <Field label={t("groups.fFolderOut")} htmlFor="rule-except-folders">
+                        <Textarea mono id="rule-except-folders" rows={2} placeholder="/home/user/scratch"
+                          value={rule.exceptFolders} onChange={(e) => patchRule({ exceptFolders: e.target.value })} />
+                      </Field>
+                    </div>
+                    <div className="check-chips">
+                      <label><input type="checkbox" checked={rule.images} onChange={(e) => patchRule({ images: e.target.checked })} /><span>{t("groups.chipImage")}</span></label>
+                      <label><input type="checkbox" checked={rule.compact} onChange={(e) => patchRule({ compact: e.target.checked })} /><span>{t("groups.chipCompact")}</span></label>
+                      <label><input type="checkbox" checked={rule.pause} onChange={(e) => patchRule({ pause: e.target.checked })} /><span>{t("groups.chipPause")}</span></label>
+                    </div>
+                    <p className={`rule-error${ruleError ? " shown" : ""}`} role="status" aria-live="polite">
+                      {ruleError}
+                    </p>
+                    <div className="rule-form-actions">
+                      <button type="button" className="btn ghost sm" onClick={() => { setRuleEditing(null); setRuleError(""); }}>
+                        {t("common.cancel")}
+                      </button>
+                      <button type="button" className="btn sm" onClick={saveRule}>
+                        <Check size={14} aria-hidden="true" />
+                        {t("groups.saveRule")}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="btn dashed" onClick={() => openRule(null)}>
+                    <Plus size={14} aria-hidden="true" />
+                    {t("groups.addRule")}
+                  </button>
+                )}
+                <p className="help">{t("groups.ruleFoot")}</p>
+              </FormSection>
+            </div>
+
+            <div hidden={tab !== "timing"} className="form-section-body">
+              <FormSection title={t("groups.secTiming")}>
+                <div className="form-grid">
+                  <Field label={t("groups.fFirstToken")} htmlFor="group-first-token" help={t("groups.fFirstTokenHelp")}>
+                    <Input id="group-first-token" type="number" min="0"
+                      max="9007199254740991" step="1"
+                      value={draft.firstToken} onChange={(e) => patchDraft({ firstToken: e.target.value })} />
+                  </Field>
+                  <Field label={t("groups.fPatience")} htmlFor="group-patience" help={t("groups.fPatienceHelp")}>
+                    <Input id="group-patience" type="number" min="-9007199254740991"
+                      max="9007199254740991" step="1" placeholder={t("groups.patiencePh")}
+                      value={draft.patience} onChange={(e) => patchDraft({ patience: e.target.value })} />
+                  </Field>
+                </div>
+              </FormSection>
+            </div>
+          </>
+        ) : null}
+      </Sheet>
 
       {visible.length === 0 ? (
         editing ? null : (
@@ -1210,108 +1215,91 @@ export default function Groups({ config, stats, busy, setBusy, onChanged }: Prop
             if (group.effort === "auto") meta.push(t("groups.metaJudge"));
             if ((group.levels ?? []).length) meta.push(t("groups.metaLevels", { v: (group.levels ?? []).join(", ") }));
             const rules = group.rules ?? [];
+
             return (
-              <article key={group.id} className={`group-card${editing?.id === group.id ? " editing" : ""}`}>
-                {editing?.id === group.id ? (
-                  <>
-                    <header className="group-head editor-context">
-                      <div className="group-title">
-                        <h3><code>{id}</code></h3>
-                        <p>{group.name || group.id}</p>
-                      </div>
-                      <div className="group-badges">
-                        <Badge tone="accent">{policyLabel(group.routing || "order", t)}</Badge>
-                        {group.auto ? <Badge>{t("groups.found_badge")}</Badge> : null}
-                      </div>
-                    </header>
-                    {editorForm}
-                  </>
+              <article key={group.id} className="group-card">
+                <div className="group-card-top">
+                  <header className="group-head">
+                    <div className="group-title">
+                      <h3><code>{id}</code></h3>
+                      {group.name && group.name !== group.id ? <p>{group.name}</p> : null}
+                    </div>
+                  </header>
+                  <div className="group-badges">
+                    <Badge tone="accent">{policyLabel(group.routing || "order", t)}</Badge>
+                    {group.auto ? <Badge>{t("groups.found_badge")}</Badge> : null}
+                    <div className="row-actions">
+                      <button type="button" className="icon-btn" disabled={busy}
+                        aria-label={t("groups.editAria", { id: group.id })} data-tip={t("common.edit")} onClick={() => openEditor(group)}>
+                        <Pencil size={14} />
+                      </button>
+                      <button type="button" className="icon-btn danger" disabled={busy}
+                        aria-label={t("groups.delAria", { id: group.id })} data-tip={group.auto ? t("groups.hideTitle") : t("common.delete")}
+                        onClick={() => deleteGroup(group)}>
+                        {group.auto ? <EyeOff size={14} /> : <Trash2 size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {routes.length ? (
+                  <ol className={`pipeline${manual ? " manual" : ""}`}>
+                    {routes.map((member, i) => {
+                      const weight = group.routing === "weight" ? (group.weights ?? [])[i] : undefined;
+                      const free = group.routing === "free_first" && (group.free ?? [])[i];
+                      const isPicked = manual && member === current;
+                      const body = (
+                        <>
+                          <span className="step">{isPicked ? <Check size={10} /> : i + 1}</span>
+                          <code className="member">{member}</code>
+                          {weight !== undefined ? <span className="pill-mini">{t("groups.weight", { w: weight })}</span> : null}
+                          {free ? <span className="pill-mini good">{t("groups.free")}</span> : null}
+                          {isPicked ? <span className="pill-mini accent">{t("groups.serving")}</span> : null}
+                        </>
+                      );
+                      return (
+                        <li key={member} className={isPicked ? "picked" : manual ? "idle" : ""}>
+                          {manual ? (
+                            <button
+                              type="button"
+                              className="member-pick"
+                              disabled={busy || isPicked}
+                              data-tip={isPicked ? t("groups.pickedTitle") : t("groups.pickTitle", { m: member })}
+                              aria-label={t("groups.pickMember", { m: member, id: group.id })}
+                              onClick={() => pickRoute(group, member)}
+                            >
+                              {body}
+                            </button>
+                          ) : (
+                            <div className="member-row">{body}</div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
                 ) : (
-                  <>
-                    <header className="group-head">
-                      <div className="group-title">
-                        <h3><code>{id}</code></h3>
-                        <p>{group.name || group.id}</p>
-                      </div>
-                      <div className="group-badges">
-                        <Badge tone="accent">{policyLabel(group.routing || "order", t)}</Badge>
-                        {group.auto ? <Badge>{t("groups.found_badge")}</Badge> : null}
-                      </div>
-                    </header>
-
-                    <div className="provider-mid">
-                      {routes.length ? (
-                        <ol className={`pipeline${manual ? " manual" : ""}`}>
-                          {routes.map((member, i) => {
-                            const weight = group.routing === "weight" ? (group.weights ?? [])[i] : undefined;
-                            const free = group.routing === "free_first" && (group.free ?? [])[i];
-                            const isPicked = manual && member === current;
-                            const body = (
-                              <>
-                                <span className="step">{isPicked ? <Check size={10} /> : i + 1}</span>
-                                <code className="member">{member}</code>
-                                {weight !== undefined ? <span className="pill-mini">{t("groups.weight", { w: weight })}</span> : null}
-                                {free ? <span className="pill-mini good">{t("groups.free")}</span> : null}
-                                {isPicked ? <span className="pill-mini accent">{t("groups.serving")}</span> : null}
-                              </>
-                            );
-                            return (
-                              <li key={member} className={isPicked ? "picked" : manual ? "idle" : ""}>
-                                {manual ? (
-                                  <button
-                                    type="button"
-                                    className="member-pick"
-                                    disabled={busy || isPicked}
-                                    data-tip={isPicked ? t("groups.pickedTitle") : t("groups.pickTitle", { m: member })}
-                                    aria-label={t("groups.pickMember", { m: member, id: group.id })}
-                                    onClick={() => pickRoute(group, member)}
-                                  >
-                                    {body}
-                                  </button>
-                                ) : (
-                                  <div className="member-row">{body}</div>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ol>
-                      ) : (
-                        <p className="text-muted">{t("groups.noRoutesCard")}</p>
-                      )}
-                      <p className="group-meta">{meta.join(" · ")}</p>
-                      {rules.length ? (
-                        <ul className="rule-lines" aria-label={t("groups.rulesFor", { id })}>
-                          {rules.map((item, index) => (
-                            <li key={index} className={item.pause ? "pause" : ""}>
-                              <ListFilter size={11} aria-hidden="true" />
-                              {describeRule(item, index, t)}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {failure ? (
-                        <p className="group-failure" data-tip={t("groups.lastFail", { t: String(failure.at_unix_ms ?? "") })}>
-                          <CircleAlert size={12} aria-hidden="true" />
-                          {t("groups.classifierFail", { model: group.classifier ?? "", error: (failure.error ?? "").slice(0, 100) })}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="provider-side">
-                      <div className="row-actions">
-                        <button type="button" className="icon-btn" disabled={busy}
-                          aria-label={t("groups.editAria", { id: group.id })} data-tip={t("common.edit")} onClick={() => openEditor(group)}>
-                          <Pencil size={14} />
-                        </button>
-                        <button type="button" className="icon-btn danger" disabled={busy}
-                          aria-label={t("groups.delAria", { id: group.id })} data-tip={group.auto ? t("groups.hideTitle") : t("common.delete")}
-                          onClick={() => deleteGroup(group)}>
-                          {group.auto ? <EyeOff size={14} /> : <Trash2 size={14} />}
-                        </button>
-                      </div>
-                    </div>
-                  </>
+                  <p className="text-muted">{t("groups.noRoutesCard")}</p>
                 )}
+
+                <p className="group-meta">{meta.join(" · ")}</p>
+
+                {rules.length ? (
+                  <ul className="rule-lines" aria-label={t("groups.rulesFor", { id })}>
+                    {rules.map((item, index) => (
+                      <li key={index} className={item.pause ? "pause" : ""}>
+                        <ListFilter size={12} aria-hidden="true" />
+                        {describeRule(item, index, t)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {failure ? (
+                  <p className="group-failure" data-tip={t("groups.lastFail", { t: String(failure.at_unix_ms ?? "") })}>
+                    <CircleAlert size={12} aria-hidden="true" />
+                    {t("groups.classifierFail", { model: group.classifier ?? "", error: (failure.error ?? "").slice(0, 100) })}
+                  </p>
+                ) : null}
               </article>
             );
           })}

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Activity } from "lucide-react";
+import { Activity, Coins, Cpu, Gauge, Zap } from "lucide-react";
 import type { RequestRecord, Stats } from "../types";
 import { cacheHitRate, compact, decodeSpeed, fmt, fmtCost, hitPct, percent } from "../util";
 import { useLocale, useT } from "../i18n";
+import { Badge } from "./ui";
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 const DAYS = 14;
@@ -73,7 +74,7 @@ function Roll({ text, className, snap }: { text: string; className?: string; sna
             <Wheel key={g.key} digit={Number(g.char)} snap={snap ?? false} />
           ) : (
             <span key={g.key} className="roll-static">
-              {g.char === " " ? " " : g.char}
+              {g.char === " " ? "\u00a0" : g.char}
             </span>
           ),
         )}
@@ -129,11 +130,12 @@ export default function StatsGauge({ stats }: { stats: Stats | null }) {
   const totalTokens = input + output;
   const totalRequests = stats?.total_requests ?? 0;
   const errors = stats?.errors ?? 0;
-  const rate = totalRequests ? errors / totalRequests : 0;
+  const errRate = totalRequests ? errors / totalRequests : 0;
   const cost = totals?.cost;
   const unpriced = totals?.unpriced ?? 0;
   const hit = cacheHitRate(totals ?? {});
   const speed = decodeSpeed(totals ?? {});
+  const activeProviders = Object.keys(stats?.providers ?? {}).length;
 
   const categories = useMemo<Category[]>(() => {
     const entries: Category[] = Object.entries(stats?.recent_usage?.by_provider ?? {}).map(([id, s]) => ({
@@ -176,61 +178,96 @@ export default function StatsGauge({ stats }: { stats: Stats | null }) {
   }
 
   const W = 340;
-  const H = 52;
-  const gap = 2;
+  const H = 54;
+  const gap = 3;
   const barW = (W - gap * (DAYS - 1)) / DAYS;
   const peak = Math.max(dayAvg * 1.6, ...days.map((d) => d.tokens));
   const yFor = (v: number) => H - (v / peak) * (H - 4);
 
   return (
-    <section className="card gauge" aria-label={t("gauge.title")}>
-      <div className="gauge-head">
-        <div className="gauge-title">
-          <span className="gauge-eyebrow">{t("gauge.title")}</span>
-          <div className="gauge-hero">
-            <Roll className="gauge-number" text={stats ? compact(totalTokens) : "—"} snap={reduce} />
-            <span className="gauge-unit">{t("gauge.unitTokens")}</span>
+    <>
+      <div className="kpi-grid" aria-label={t("metrics.totals")}>
+        <article className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">{t("kpi.tokens")}</span>
+            <span className="kpi-icon" aria-hidden="true"><Cpu size={14} /></span>
           </div>
-          <p className="gauge-sub">
-            {t("metrics.tokensInOut", { in: compact(input), out: compact(output) })}
-            {cached ? t("metrics.cached", { cached: compact(cached) }) : ""}
-          </p>
-          <p className="gauge-sub gauge-vitals">
-            <span title={t("metrics.costTitle", { n: fmt(unpriced) })}>{fmtCost(cost, unpriced)}</span>
-            <span aria-hidden="true">·</span>
-            <span title={t("metrics.hitTitle")}>{t("metrics.hitRate", { p: hitPct(hit) })}</span>
-            {speed ? (
-              <>
-                <span aria-hidden="true">·</span>
-                <span title={t("metrics.speedTitle", { n: fmt(totals?.decode_n ?? 0) })}>
-                  {t("metrics.tps", { n: fmt(Math.round(speed)) })}
-                </span>
-              </>
+          <div className="kpi-val">
+            <Roll text={stats ? compact(totalTokens) : "—"} snap={reduce} />
+          </div>
+          <div className="kpi-sub">
+            <span>{t("metrics.tokensInOut", { in: compact(input), out: compact(output) })}</span>
+            {cached > 0 ? <Badge tone="accent">{compact(cached)}</Badge> : null}
+          </div>
+        </article>
+
+        <article className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">{t("kpi.requests")}</span>
+            <span className="kpi-icon" aria-hidden="true"><Gauge size={14} /></span>
+          </div>
+          <div className="kpi-val">
+            <Roll text={stats ? fmt(totalRequests) : "—"} snap={reduce} />
+          </div>
+          <div className="kpi-sub">
+            <span>
+              {totals?.average_latency_ms != null
+                ? t("kpi.avgLatency", { ms: fmt(totals.average_latency_ms) })
+                : t("metrics.sinceStarted")}
+            </span>
+            {stats ? (
+              <Badge tone={errRate > 0.05 ? "bad" : errors > 0 ? "warn" : "good"}>
+                {errors > 0 ? percent(errors, totalRequests) : t("kpi.healthy")}
+              </Badge>
             ) : null}
-          </p>
-        </div>
-        <div className="gauge-side">
-          <p className={`gauge-rate${rate > 0.05 ? " bad" : rate > 0 ? " warn" : ""}`}>
-            <Roll text={stats ? percent(errors, totalRequests) : "—"} snap={reduce} />
-          </p>
-          <p className="gauge-sub">
-            {stats
-              ? t("gauge.reqLine", { n: fmt(totalRequests), ms: totals?.average_latency_ms == null ? "—" : fmt(totals.average_latency_ms) })
-              : "—"}
-          </p>
-        </div>
+          </div>
+        </article>
+
+        <article className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">{t("kpi.spend")}</span>
+            <span className="kpi-icon" aria-hidden="true"><Coins size={14} /></span>
+          </div>
+          <div className="kpi-val" title={t("metrics.costTitle", { n: fmt(unpriced) })}>
+            {stats ? fmtCost(cost, unpriced) : "—"}
+          </div>
+          <div className="kpi-sub">
+            <span title={t("metrics.hitTitle")}>{t("kpi.cacheHit", { p: hitPct(hit) })}</span>
+            {unpriced > 0 ? <span className="text-muted">{t("usage.unpricedTitle", { n: fmt(unpriced) })}</span> : null}
+          </div>
+        </article>
+
+        <article className="kpi-card">
+          <div className="kpi-top">
+            <span className="kpi-label">{t("kpi.throughput")}</span>
+            <span className="kpi-icon" aria-hidden="true"><Zap size={14} /></span>
+          </div>
+          <div className="kpi-val" title={t("metrics.speedTitle", { n: fmt(totals?.decode_n ?? 0) })}>
+            {speed > 0 ? t("metrics.tps", { n: fmt(Math.round(speed)) }) : "—"}
+          </div>
+          <div className="kpi-sub">
+            <span>{t("kpi.providersActive", { n: activeProviders })}</span>
+            <span className={errors ? "text-bad" : "text-good"}>
+              {errors ? t("metrics.finalNotOk", { errors: fmt(errors) }) : t("gauge.noErrors")}
+            </span>
+          </div>
+        </article>
       </div>
 
-      <div className="gauge-meter-block">
-        <div
-          className="gauge-meter"
-          role="meter"
-          aria-label={t("gauge.meterAria", { total: fmt(totalTokens), n: segments.length })}
-          aria-valuemin={0}
-          aria-valuemax={totalTokens}
-          aria-valuenow={Math.min(totalTokens, totalTokens)}
-        >
-          <div className="gauge-track">
+      <section className="gauge-panel" aria-label={t("gauge.title")}>
+        <div className="gauge-col">
+          <div className="gauge-col-head">
+            <span className="gauge-col-title">{t("kpi.shareTitle")}</span>
+            <span className="gauge-col-meta">{compact(totalTokens)} {t("gauge.unitTokens")}</span>
+          </div>
+          <div
+            className="gauge-track"
+            role="meter"
+            aria-label={t("gauge.meterAria", { total: fmt(totalTokens), n: segments.length })}
+            aria-valuemin={0}
+            aria-valuemax={totalTokens}
+            aria-valuenow={totalTokens}
+          >
             {segments.map((s) => (
               <div
                 key={s.id}
@@ -239,106 +276,98 @@ export default function StatsGauge({ stats }: { stats: Stats | null }) {
                   left: `${s.start.toFixed(3)}%`,
                   width: `${Math.max(s.end - s.start, 0).toFixed(3)}%`,
                   backgroundColor: s.color,
-                  opacity: hoverCat && hoverCat !== s.id ? 0.3 : 1,
+                  opacity: hoverCat && hoverCat !== s.id ? 0.28 : 1,
                 }}
               />
             ))}
           </div>
+          {segments.length ? (
+            <ul className="gauge-legend" aria-label={t("gauge.legendAria")}>
+              {segments.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    className="gauge-legend-row"
+                    onBlur={() => setHoverCat(null)}
+                    onFocus={() => setHoverCat(s.id)}
+                    onPointerEnter={() => setHoverCat(s.id)}
+                    onPointerLeave={() => setHoverCat(null)}
+                  >
+                    <span className="gauge-dot" style={{ backgroundColor: s.color }} />
+                    <span className="gauge-cat">{s.other ? t("gauge.other") : s.id}</span>
+                    <span className="gauge-cat-value">{compact(s.used)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="gauge-empty">
+              <Activity size={13} aria-hidden="true" />
+              {t("gauge.empty")}
+            </p>
+          )}
         </div>
-        {segments.length ? (
-          <ul className="gauge-legend" aria-label={t("gauge.legendAria")}>
-            {segments.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  className="gauge-legend-row"
-                  onBlur={() => setHoverCat(null)}
-                  onFocus={() => setHoverCat(s.id)}
-                  onPointerEnter={() => setHoverCat(s.id)}
-                  onPointerLeave={() => setHoverCat(null)}
-                >
-                  <span className="gauge-dot" style={{ backgroundColor: s.color }} />
-                  <span className="gauge-cat">{s.other ? t("gauge.other") : s.id}</span>
-                  <span className="gauge-cat-value">{compact(s.used)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="gauge-empty">
-            <Activity size={13} aria-hidden="true" />
-            {t("gauge.empty")}
-          </p>
-        )}
-      </div>
 
-      <div
-        className="gauge-daily"
-        role="group"
-        tabIndex={0}
-        aria-label={t("gauge.dailyAria")}
-        onBlur={() => setHoverDay(null)}
-        onKeyDown={onDaysKey}
-      >
-        <div className="gauge-daily-head">
-          <span>{dayLabel(focusDay)}</span>
-          <span className="gauge-daily-value">
-            {t("gauge.dayValue", { tokens: compact(days[focusDay].tokens), n: days[focusDay].requests })}
-          </span>
+        <div className="gauge-col">
+          <div className="gauge-col-head">
+            <span className="gauge-col-title">{t("kpi.velocityTitle")}</span>
+            <span className="gauge-col-meta">
+              {dayLabel(focusDay)} · {t("gauge.dayValue", { tokens: compact(days[focusDay].tokens), n: days[focusDay].requests })}
+            </span>
+          </div>
+          <div
+            className="gauge-daily"
+            role="group"
+            tabIndex={0}
+            aria-label={t("gauge.dailyAria")}
+            onBlur={() => setHoverDay(null)}
+            onKeyDown={onDaysKey}
+          >
+            <svg
+              aria-hidden="true"
+              className="gauge-bars"
+              onPointerLeave={() => setHoverDay(null)}
+              preserveAspectRatio="none"
+              viewBox={`0 0 ${W} ${H}`}
+            >
+              {days.map((d, i) => {
+                const x = i * (barW + gap);
+                const active = i === focusDay;
+                const over = d.tokens > dayAvg * 1.25 && d.tokens > 0;
+                return (
+                  <g key={d.start} onPointerEnter={() => setHoverDay(i)}>
+                    <rect fill="transparent" height={H} width={barW + gap} x={x - gap / 2} y={0} />
+                    <rect
+                      className={`gauge-bar${active ? " active" : ""}${over ? " over" : ""}`}
+                      height={Math.max(H - yFor(d.tokens), 2)}
+                      rx={2}
+                      width={barW}
+                      x={x}
+                      y={d.tokens > 0 ? yFor(d.tokens) : H - 2}
+                    />
+                  </g>
+                );
+              })}
+              <line
+                className="gauge-avg-line"
+                strokeDasharray="3 3"
+                vectorEffect="non-scaling-stroke"
+                x1={0}
+                x2={W}
+                y1={yFor(dayAvg)}
+                y2={yFor(dayAvg)}
+              />
+            </svg>
+            <div className="gauge-daily-foot">
+              <span>{dayLabel(0)}</span>
+              <span className="gauge-avg-label">
+                <span className="gauge-avg-dash" aria-hidden="true" />
+                {t("gauge.dailyAvg", { v: compact(dayAvg) })}
+              </span>
+            </div>
+          </div>
         </div>
-        <svg
-          aria-hidden="true"
-          className="gauge-bars"
-          onPointerLeave={() => setHoverDay(null)}
-          preserveAspectRatio="none"
-          viewBox={`0 0 ${W} ${H}`}
-        >
-          {days.map((d, i) => {
-            const x = i * (barW + gap);
-            const active = i === focusDay;
-            const over = d.tokens > dayAvg * 1.25 && d.tokens > 0;
-            return (
-              <g key={d.start} onPointerEnter={() => setHoverDay(i)}>
-                <rect fill="transparent" height={H} width={barW + gap} x={x - gap / 2} y={0} />
-                <rect
-                  className={`gauge-bar${active ? " active" : ""}${over ? " over" : ""}`}
-                  height={Math.max(H - yFor(d.tokens), 2)}
-                  rx={1.5}
-                  width={barW}
-                  x={x}
-                  y={d.tokens > 0 ? yFor(d.tokens) : H - 2}
-                />
-              </g>
-            );
-          })}
-          <line
-            className="gauge-avg-line"
-            strokeDasharray="3 3"
-            vectorEffect="non-scaling-stroke"
-            x1={0}
-            x2={W}
-            y1={yFor(dayAvg)}
-            y2={yFor(dayAvg)}
-          />
-        </svg>
-        <div className="gauge-daily-foot">
-          <span>{dayLabel(0)}</span>
-          <span className="gauge-avg-label">
-            <span className="gauge-avg-dash" aria-hidden="true" />
-            {t("gauge.dailyAvg", { v: compact(dayAvg) })}
-          </span>
-        </div>
-      </div>
-
-      <div className="gauge-foot">
-        <p aria-live="polite" className="gauge-status">
-          {t("gauge.perDay", { v: compact(dayAvg) })}
-        </p>
-        <p className={`gauge-status${errors ? " bad" : ""}`}>
-          {errors ? t("metrics.finalNotOk", { errors: fmt(errors) }) : t("gauge.noErrors")}
-        </p>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
-

@@ -7,8 +7,10 @@ import type {
   RequestRecord,
   Stats,
   TraceResponse,
+  VendorPreset,
 } from "./types";
 import AppShell from "./components/AppShell";
+import AuthGate, { AccessDenied } from "./components/AuthGate";
 import Sidebar, { type NavItem, type ThemeChoice, type View } from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import NoticeBanner from "./components/NoticeBanner";
@@ -74,12 +76,14 @@ export default function App() {
   const [localToken, setLocalToken] = useState(() => {
     try { return sessionStorage.getItem("magpie-local-token") ?? ""; } catch { return ""; }
   });
+  const [authError, setAuthError] = useState(false);
   const [data, setData] = useState<GatewayData>({
     stats: null,
     models: null,
     config: null,
     lastUpdate: null,
   });
+  const [presets, setPresets] = useState<VendorPreset[] | null>(null);
   const [message, setMessage] = useState("");
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -92,14 +96,14 @@ export default function App() {
   const [offlineDismissed, setOfflineDismissed] = useState(false);
 
   const t = useT();
-  const meta = {
-    overview: { title: t("view.overviewTitle"), subtitle: t("view.overviewSub") },
-    requests: { title: t("view.requestsTitle"), subtitle: t("view.requestsSub") },
-    chat: { title: t("view.chatTitle"), subtitle: t("view.chatSub") },
-    gateway: { title: t("view.gatewayTitle"), subtitle: t("view.gatewaySub") },
-    providers: { title: t("view.providersTitle"), subtitle: t("view.providersSub") },
-    groups: { title: t("view.groupsTitle"), subtitle: t("view.groupsSub") },
-  }[view];
+  const titleByView: Record<View, string> = {
+    overview: t("view.overviewTitle"),
+    requests: t("view.requestsTitle"),
+    chat: t("view.chatTitle"),
+    gateway: t("view.gatewayTitle"),
+    providers: t("view.providersTitle"),
+    groups: t("view.groupsTitle"),
+  };
 
   useEffect(() => {
     try {
@@ -150,6 +154,7 @@ export default function App() {
 
   const update = useCallback(
     async (silent: boolean) => {
+      if (!localToken) return false;
       if (!silent) setRefreshing(true);
       try {
         const [stats, models, config] = await Promise.all([
@@ -174,12 +179,21 @@ export default function App() {
         if (!silent) setRefreshing(false);
       }
     },
-    [statsPath],
+    [statsPath, localToken],
   );
 
-  // Poll the trace endpoint: wait=1 holds the call ~25s until a new
-  // finished request lands, which drives the live Routing view.
   useEffect(() => {
+    if (!localToken) return;
+    let live = true;
+    api.get<VendorPreset[]>("/config/presets").then(
+      (list) => { if (live) setPresets(list); },
+      () => { if (live) setPresets([]); },
+    );
+    return () => { live = false; };
+  }, [localToken]);
+
+  useEffect(() => {
+    if (!localToken) return;
     let stopped = false;
     const run = ++traceRunId.current;
     async function poll() {
@@ -209,19 +223,19 @@ export default function App() {
     return () => {
       stopped = true;
     };
-  }, []);
+  }, [localToken]);
 
   useEffect(() => {
     update(true);
   }, [update]);
 
   useEffect(() => {
-    if (!autoRefresh) return;
-    const t = setInterval(() => {
+    if (!autoRefresh || !localToken) return;
+    const timer = setInterval(() => {
       if (document.visibilityState === "visible") update(true);
     }, 5000);
-    return () => clearInterval(t);
-  }, [autoRefresh, update]);
+    return () => clearInterval(timer);
+  }, [autoRefresh, localToken, update]);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,10 +248,10 @@ export default function App() {
       }
     }
     check();
-    const t = setInterval(check, 10000);
+    const timer = setInterval(check, 10000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, []);
 
@@ -294,20 +308,29 @@ export default function App() {
   }, [localToken]);
 
   useEffect(() => {
-    api.setUnauthorizedHandler(() => setLocalToken(""));
+    api.setUnauthorizedHandler(() => {
+      setLocalToken("");
+      setAuthError(true);
+    });
   }, []);
 
   if (!isLoopbackHost(window.location.hostname)) {
-    return <main className="access-denied"><ShieldCheck size={28} /><h1>Local access only</h1><p>The Magpie console is designed for a loopback connection. Open it from this computer at <code>127.0.0.1</code>.</p></main>;
+    return <AccessDenied theme={theme} setTheme={setTheme} />;
   }
 
   if (!localToken) {
-    return <main className="token-gate"><form className="token-card" onSubmit={(event) => { event.preventDefault(); const value = String(new FormData(event.currentTarget).get("token") ?? "").trim(); if (value) setLocalToken(value); }}>
-      <div className="token-brand"><span className="brand-mark"><span>m</span></span><span><b>magpie</b><small>LOCAL GATEWAY</small></span></div>
-      <p className="eyebrow">CONTROL PLANE</p><h1>Welcome back</h1><p className="token-copy">Enter the local gateway token from your Magpie configuration to open the console.</p>
-      <label htmlFor="gateway-token">Gateway token</label><input id="gateway-token" name="token" type="password" autoComplete="current-password" autoFocus required placeholder="Enter your local token" />
-      <button type="submit" className="btn primary">Open console</button><p className="token-foot"><ShieldCheck size={14} /> Your token stays in this browser session.</p>
-    </form></main>;
+    return (
+      <AuthGate
+        authError={authError}
+        theme={theme}
+        setTheme={setTheme}
+        onSubmit={(token) => {
+          setAuthError(false);
+          api.setLocalToken(token);
+          setLocalToken(token);
+        }}
+      />
+    );
   }
 
   return (
@@ -323,12 +346,15 @@ export default function App() {
           healthy={healthy}
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((c) => !c)}
+          onSignOut={() => {
+            setAuthError(false);
+            setLocalToken("");
+          }}
         />
       }
       topBar={
         <TopBar
-          title={meta.title}
-          subtitle={meta.subtitle}
+          title={titleByView[view]}
           healthy={healthy}
           lastUpdate={data.lastUpdate}
           refreshFailed={refreshFailed}
@@ -342,95 +368,99 @@ export default function App() {
         />
       }
     >
-        <div className="main-inner">
-          {healthy === false && !offlineDismissed ? (
-            <NoticeBanner
-              tone="bad"
-              title={t("banner.offlineTitle")}
-              actionLabel={t("common.refresh")}
-              onAction={refreshAll}
-              onDismiss={() => setOfflineDismissed(true)}
-            >
-              {t("banner.offlineBody")}
-            </NoticeBanner>
-          ) : null}
-          {message ? (
-            <NoticeBanner
-              tone="warn"
-              title={t("topbar.refreshFailed")}
-              actionLabel={t("common.refresh")}
-              onAction={refreshAll}
-              onDismiss={() => setMessage("")}
-            >
-              {message}
-            </NoticeBanner>
-          ) : null}
+      <div className="main-inner">
+        {healthy === false && !offlineDismissed ? (
+          <NoticeBanner
+            tone="bad"
+            title={t("banner.offlineTitle")}
+            actionLabel={t("common.refresh")}
+            onAction={refreshAll}
+            onDismiss={() => setOfflineDismissed(true)}
+          >
+            {t("banner.offlineBody")}
+          </NoticeBanner>
+        ) : null}
+        {message ? (
+          <NoticeBanner
+            tone="warn"
+            title={t("topbar.refreshFailed")}
+            actionLabel={t("common.refresh")}
+            onAction={refreshAll}
+            onDismiss={() => setMessage("")}
+          >
+            {message}
+          </NoticeBanner>
+        ) : null}
 
-          <datalist id="agent-model-options">
-            {routeOptions.map((route) => (
-              <option key={route} value={route} />
-            ))}
-          </datalist>
+        <datalist id="agent-model-options">
+          {routeOptions.map((route) => (
+            <option key={route} value={route} />
+          ))}
+        </datalist>
 
-          <section className="view view-overview" hidden={view !== "overview"} aria-label="Overview">
-            <PageHeader
-              title={t("page.overviewTitle")}
-              subtitle={t("page.overviewSub")}
-            />
-            <StatsGauge stats={data.stats} />
-            <div className="grid-main-side">
-              <Activity stats={data.stats} />
-              <ProviderTotals stats={data.stats} />
-            </div>
-            <Routing trace={trace} config={data.config} stats={data.stats} />
-            <UsageByModel stats={data.stats} />
-          </section>
+        <section className="view view-overview" hidden={view !== "overview"} aria-label="Overview">
+          <PageHeader
+            title={t("page.overviewTitle")}
+            subtitle={t("page.overviewSub")}
+          />
+          <StatsGauge stats={data.stats} />
+          <div className="grid-main-side">
+            <Activity stats={data.stats} />
+            <ProviderTotals stats={data.stats} config={data.config} presets={presets} />
+          </div>
+          <Routing trace={trace} config={data.config} stats={data.stats} />
+          <UsageByModel stats={data.stats} />
+        </section>
 
-          <section className="view" hidden={view !== "requests"} aria-label={t("page.requestsTitle")}>
-            <PageHeader
-              title={t("page.requestsTitle")}
-              subtitle={t("page.requestsSub")}
-            />
-            <RecentRequests
-              stats={data.stats}
-              statsRange={statsRange}
-              setStatsRange={setStatsRange}
-              onApplied={refreshAll}
-            />
-            <p className="footnote">
-              <ShieldCheck size={14} aria-hidden="true" />
-              {t("page.secretNote")}
-            </p>
-          </section>
+        <section className="view" hidden={view !== "requests"} aria-label={t("page.requestsTitle")}>
+          <PageHeader
+            title={t("page.requestsTitle")}
+            subtitle={t("page.requestsSub")}
+          />
+          <RecentRequests
+            stats={data.stats}
+            statsRange={statsRange}
+            setStatsRange={setStatsRange}
+            onApplied={refreshAll}
+          />
+          <p className="footnote">
+            <ShieldCheck size={14} aria-hidden="true" />
+            {t("page.secretNote")}
+          </p>
+        </section>
 
-          <section className="view" hidden={view !== "chat"} aria-label={t("page.chatTitle")}>
-            <PageHeader
-              title={t("page.chatTitle")}
-              subtitle={t("page.chatSub")}
-            />
-            <Chat models={data.models} config={data.config} />
-          </section>
+        <section className="view view-chat" hidden={view !== "chat"} aria-label={t("page.chatTitle")}>
+          <PageHeader
+            title={t("page.chatTitle")}
+            subtitle={t("page.chatSub")}
+          />
+          <Chat models={data.models} config={data.config} />
+        </section>
 
-          <section className="view" hidden={view !== "providers"} aria-label={t("page.providersTitle")}>
-            <ProviderConfig config={data.config} busy={busy} setBusy={setBusy} onChanged={refreshAll} />
-            <Models models={data.models} />
-          </section>
+        <section className="view" hidden={view !== "providers"} aria-label={t("page.providersTitle")}>
+          <ProviderConfig config={data.config} presets={presets} busy={busy} setBusy={setBusy} onChanged={refreshAll} />
+          <Models models={data.models} />
+        </section>
 
-          <section className="view" hidden={view !== "gateway"} aria-label={t("page.gatewayTitle")}>
-            <Gateway config={data.config} models={data.models} healthy={healthy} />
-          </section>
+        <section className="view" hidden={view !== "gateway"} aria-label={t("page.gatewayTitle")}>
+          <PageHeader
+            title={t("page.gatewayTitle")}
+            subtitle={t("view.gatewaySub")}
+          />
+          <Gateway config={data.config} models={data.models} healthy={healthy} />
+        </section>
 
-          <section className="view" hidden={view !== "groups"} aria-label={t("page.groupsTitle")}>
-            <Groups
-              config={data.config}
-              models={data.models}
-              stats={data.stats}
-              busy={busy}
-              setBusy={setBusy}
-              onChanged={refreshAll}
-            />
-          </section>
-        </div>
+        <section className="view" hidden={view !== "groups"} aria-label={t("page.groupsTitle")}>
+          <Groups
+            config={data.config}
+            models={data.models}
+            stats={data.stats}
+            busy={busy}
+            setBusy={setBusy}
+            onChanged={refreshAll}
+          />
+        </section>
+      </div>
     </AppShell>
   );
 }

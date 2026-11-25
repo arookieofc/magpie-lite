@@ -11,9 +11,6 @@ export interface PastedEndpoint {
   keys?: string;
 }
 
-// Pasted setup, mirroring upstream's pasteread: a URL and a key out of a
-// curl command, env lines or a bare "url + key" paste, prefilled into a
-// custom draft for review instead of pasted into the search.
 export function parsePasted(text: string): PastedEndpoint {
   const out: PastedEndpoint = {};
   const raw = text.match(/https?:\/\/[^\s"'`\\\]]+/i)?.[0]?.replace(/[),;.!]+$/, "");
@@ -32,7 +29,6 @@ export function parsePasted(text: string): PastedEndpoint {
   if (key) {
     out.keys = key;
   } else if (out.baseUrl) {
-    // A bare token next to the URL, e.g. pasted "url key" lines.
     const bare = (text.match(/\b[A-Za-z0-9_.\-~]{20,}\b/g) ?? []).find(
       (tok) => !out.baseUrl!.includes(tok) && !/^(https?|bearer)$/i.test(tok),
     );
@@ -71,13 +67,12 @@ export default function AddProvider({
 }: Props) {
   const t = useT();
   const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | VendorPreset["kind"]>("all");
   const [paste, setPaste] = useState("");
   const [showImport, setShowImport] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const searchHint = t("add.search");
 
-  // The search box is as wide as its hint, like upstream's add sheet:
-  // measure the hint and size the box by it so it never cuts off.
   useLayoutEffect(() => {
     const input = searchRef.current;
     const box = input?.parentElement;
@@ -91,14 +86,10 @@ export default function AddProvider({
       const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
       const icon = input.previousElementSibling?.getBoundingClientRect().width ?? 0;
       const gap = parseFloat(getComputedStyle(box).columnGap || "0");
-      // Canvas under-measures CJK fallback glyphs, so keep generous
-      // room; the box still tracks the hint width like upstream's.
       const chrome = pad + icon + gap + 48;
       box.style.width = `${Math.ceil(text + chrome)}px`;
     };
     size();
-    // Web fonts load after first measure and widen CJK glyphs; re-size
-    // once they arrive so the hint still fits.
     let live = true;
     document.fonts?.ready.then(() => {
       if (live) size();
@@ -132,9 +123,13 @@ export default function AddProvider({
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
-  const visible = !q
-    ? groups
-    : groups.filter((g) => q.split(/\s+/).every((w) => groupText(g).includes(w)));
+  const visible = useMemo(() => {
+    return groups.filter((g) => {
+      if (kindFilter !== "all" && g.entries[0].kind !== kindFilter) return false;
+      if (!q) return true;
+      return q.split(/\s+/).every((w) => groupText(g).includes(w));
+    });
+  }, [groups, kindFilter, q]);
 
   const sections: { kind: VendorPreset["kind"]; title: string; hint: string }[] = [
     { kind: "partner", title: t("add.partners"), hint: t("add.partnersHint") },
@@ -157,8 +152,6 @@ export default function AddProvider({
   const tileTitle = (g: TileGroup) => {
     const lines = g.entries.map((pr) => {
       const where = g.entries.length > 1 ? `${pr.id.endsWith("-cn") ? t("add.china") : t("add.global")} ` : "";
-      // A preset's own note says more than its host (Azure's
-      // YOUR-RESOURCE pattern), like upstream's tile tooltip.
       const host = pr.note ? t(pr.note as Parameters<TFunc>[0]) : presetUrls(pr).map(hostOf).join(", ");
       return `${where}${host}${isAdded(pr) ? ` · ${t("add.addedNote")}` : ""}`;
     });
@@ -167,14 +160,14 @@ export default function AddProvider({
   };
 
   return (
-    <Card>
+    <Card flush>
       <div className="add-head">
         <span className="add-title">{providers.length ? t("add.title") : t("add.first")}</span>
         <span className="grow" />
         <label className="pv-search add-search">
           <Search size={14} aria-hidden="true" />
           <input
-              ref={searchRef}
+            ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onPaste={(e) => {
@@ -192,8 +185,8 @@ export default function AddProvider({
               if (query) setQuery("");
               else if (canClose) onClose();
             }}
-              placeholder={searchHint}
-              aria-label={searchHint}
+            placeholder={searchHint}
+            aria-label={searchHint}
           />
         </label>
         <button
@@ -221,12 +214,40 @@ export default function AddProvider({
         ) : null}
       </div>
 
+      <div className="add-cats" role="tablist" aria-label={t("add.title")}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={kindFilter === "all"}
+          className={`add-cat-pill${kindFilter === "all" ? " on" : ""}`}
+          onClick={() => setKindFilter("all")}
+        >
+          {t("add.all")}
+        </button>
+        {sections.map((s) => {
+          const hasAny = groups.some((g) => g.entries[0].kind === s.kind);
+          if (!hasAny) return null;
+          return (
+            <button
+              key={s.kind}
+              type="button"
+              role="tab"
+              aria-selected={kindFilter === s.kind}
+              className={`add-cat-pill${kindFilter === s.kind ? " on" : ""}`}
+              onClick={() => setKindFilter(s.kind)}
+            >
+              {s.title}
+            </button>
+          );
+        })}
+      </div>
+
       {showImport ? (
         <div className="add-import">
           <Field label={t("add.impLabel")} htmlFor="add-import-text" help={t("add.impDesc")}>
-            <Textarea mono
+            <Textarea
+              mono
               id="add-import-text"
-              
               rows={4}
               value={paste}
               onChange={(e) => setPaste(e.target.value)}

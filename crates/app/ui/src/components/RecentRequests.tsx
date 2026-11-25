@@ -88,6 +88,12 @@ interface Props {
   onApplied: () => void;
 }
 
+const PRESETS = [
+  { key: "req.preset15m", ms: 15 * 60_000 },
+  { key: "req.preset1h", ms: 60 * 60_000 },
+  { key: "req.preset24h", ms: 24 * 3600_000 },
+] as const;
+
 export default function RecentRequests({ stats, statsRange, setStatsRange, onApplied }: Props) {
   const t = useT();
   const [from, setFrom] = useState<Date | null>(null);
@@ -125,6 +131,16 @@ export default function RecentRequests({ stats, statsRange, setStatsRange, onApp
     onApplied();
   }
 
+  function applyPreset(ms: number) {
+    const now = new Date();
+    const start = new Date(now.getTime() - ms);
+    setFrom(start);
+    setTo(now);
+    setRangeError("");
+    setStatsRange({ from: start.getTime(), to: now.getTime() });
+    onApplied();
+  }
+
   function clear() {
     setFrom(null);
     setTo(null);
@@ -144,8 +160,27 @@ export default function RecentRequests({ stats, statsRange, setStatsRange, onApp
 
   return (
     <>
-      <form className="toolbar" autoComplete="off" onSubmit={apply}>
+      <form className="toolbar-card" autoComplete="off" onSubmit={apply}>
         <div className="toolbar-range">
+          <div className="preset-pills" role="group" aria-label={t("req.from")}>
+            {PRESETS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                className="btn sm ghost"
+                onClick={() => applyPreset(p.ms)}
+              >
+                {t(p.key)}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`btn sm ghost${!statsRange ? " on" : ""}`}
+              onClick={clear}
+            >
+              {t("req.presetAll")}
+            </button>
+          </div>
           <label className="inline-field" htmlFor="stats-from">
             <span>{t("req.from")}</span>
           </label>
@@ -164,11 +199,11 @@ export default function RecentRequests({ stats, statsRange, setStatsRange, onApp
             onChange={setTo}
             withTime
           />
-          <button className="btn" type="submit">
+          <button className="btn sm" type="submit">
             {t("req.apply")}
           </button>
           <button
-            className="btn ghost"
+            className="btn sm ghost"
             type="button"
             disabled={!statsRange && !from && !to}
             onClick={clear}

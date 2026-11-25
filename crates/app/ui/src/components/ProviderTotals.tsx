@@ -1,7 +1,8 @@
 import { Clock, Server } from "lucide-react";
-import type { Stats } from "../types";
+import type { Config, Stats, VendorPreset } from "../types";
 import { compact, fmt, formatDuration, percent } from "../util";
-import { Avatar, Card, Empty } from "./ui";
+import { Card, Empty } from "./ui";
+import VendorIcon, { hostOf, presetIconForHost } from "./vendorIcon";
 import { useT, type TFunc } from "../i18n";
 
 function laneSummary(lanes: { who: string; busy: number; waiting: number; limit: number }[], id: string, t: TFunc) {
@@ -19,9 +20,19 @@ function rpmSummary(rpm: { who: string; used: number }[], id: string, t: TFunc) 
   return used === 0 ? null : t("health.rpm", { n: used });
 }
 
-export default function ProviderTotals({ stats }: { stats: Stats | null }) {
+export default function ProviderTotals({
+  stats,
+  config,
+  presets,
+}: {
+  stats: Stats | null;
+  config?: Config | null;
+  presets?: VendorPreset[] | null;
+}) {
   const t = useT();
   const entries = Object.entries(stats?.providers ?? {}).sort((a, b) => b[1].requests - a[1].requests);
+  const byId = new Map((config?.providers ?? []).map((p) => [p.id, p]));
+
   return (
     <Card
       className="health"
@@ -44,11 +55,14 @@ export default function ProviderTotals({ stats }: { stats: Stats | null }) {
             const now = Date.now();
             const rpm = rpmSummary(stats?.rpm ?? [], id, t);
             const keys = Object.entries(p.keys);
+            const cfg = byId.get(id);
+            const icon = cfg?.icon || (cfg?.base_url ? presetIconForHost(presets, hostOf(cfg.base_url)) : null);
+
             return (
               <li key={id} className="health-item">
                 <div className="health-head">
-                  <Avatar name={id} size="sm" />
-                  <b>{id}</b>
+                  <VendorIcon name={cfg?.name || id} icon={icon} size="sm" />
+                  <b>{cfg?.name || id}</b>
                   <span className={`health-rate ${tone}`}>{percent(ok, p.requests)}</span>
                 </div>
                 <div className="meter" aria-hidden="true">

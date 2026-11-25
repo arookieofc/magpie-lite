@@ -1,55 +1,142 @@
-/* ── Design tokens (Astryx-inspired) ────────────────────────────────────
-   Semantic layer on top of the existing dark/light themes.
-   Naming follows Astryx colorVars / spacingVars / radiusVars so a future
-   move to @astryxdesign/core is mechanical. Values alias the current
-   console theme, so this file changes no pixels by itself. */
+/* ── Obsidian Precision Design System Tokens ───────────────────────────────
+   Single source of truth for typography, surfaces, borders, semantic tones,
+   elevation, and motion across dark (Obsidian Slate) and light (Alabaster). */
 
 :root {
-  --spacing-0_5: 2px;
-  --spacing-1: 4px;
-  --spacing-2: 8px;
-  --spacing-3: 12px;
-  --spacing-4: 16px;
-  --spacing-5: 20px;
-  --spacing-6: 24px;
-  --spacing-8: 32px;
+  --font: "Inter Variable", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono Variable", "Cascadia Code", Consolas, monospace;
 
-  --radius-element-sm: var(--radius-sm);
-  --radius-element-md: var(--radius-md);
-  --radius-surface: var(--radius);
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
 
-  --size-element-sm: 28px;
-  --size-element-md: 34px;
-  --size-element-lg: 40px;
+  --radius: 14px;
+  --radius-md: 10px;
+  --radius-sm: 7px;
+
+  --side-w: 244px;
+  --side-w-collapsed: 64px;
+  --topbar-h: 56px;
+
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --spring: cubic-bezier(.34, 1.35, .45, 1);
+  --fast: 140ms;
+  --med: 240ms;
 }
 
 :root,
 [data-theme="dark"] {
-  --color-background-body: var(--bg);
-  --color-background-surface: var(--surface);
-  --color-background-card: var(--surface);
-  --color-background-muted: var(--surface-2);
-  --color-text-primary: var(--text);
-  --color-text-secondary: var(--text-2);
-  --color-text-disabled: var(--muted);
-  --color-border: var(--border);
-  --color-accent: var(--accent);
-  --color-success: var(--good);
-  --color-error: var(--bad);
-  --color-warning: var(--warn);
+  color-scheme: dark;
+
+  --bg: #09090b;
+  --bg-wash: radial-gradient(900px 420px at 58% -120px, rgba(99, 102, 241, .11), transparent 72%);
+  --bg-side: #0c0c0f;
+  --surface: #111115;
+  --surface-2: #16161b;
+  --surface-3: #1d1d24;
+  --code-bg: #0b0b0e;
+
+  --hover: rgba(255, 255, 255, .05);
+  --press: rgba(255, 255, 255, .09);
+
+  --border: rgba(255, 255, 255, .08);
+  --border-strong: rgba(255, 255, 255, .14);
+
+  --text: #f4f4f5;
+  --text-2: #d4d4d8;
+  --muted: #8b8b97;
+  --subtle: #5c5c69;
+
+  --accent: #818cf8;
+  --accent-solid: #6366f1;
+  --accent-solid-hover: #7579f8;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(99, 102, 241, .14);
+  --accent-line: rgba(129, 140, 248, .42);
+
+  --good: #34d399;
+  --good-soft: rgba(16, 185, 129, .14);
+  --bad: #fb7185;
+  --bad-soft: rgba(244, 63, 94, .14);
+  --warn: #fbbf24;
+  --warn-soft: rgba(245, 158, 11, .14);
+
+  --chart-ok: #34d399;
+  --chart-1: #818cf8;
+  --chart-2: #38bdf8;
+  --chart-3: #34d399;
+  --chart-4: #f472b6;
+  --chart-5: #fbbf24;
+
+  --glow: 0 0 24px rgba(99, 102, 241, .28);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, .04);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, .68), 0 4px 14px rgba(0, 0, 0, .42), 0 0 0 1px rgba(255, 255, 255, .08);
+  --scrim: rgba(5, 5, 8, .66);
+
+  --input-bg: #0c0c10;
+  --seg-track: rgba(255, 255, 255, .06);
+  --seg-thumb: rgba(255, 255, 255, .13);
+  --seg-edge: inset 0 .5px 0 rgba(255, 255, 255, .14), 0 1px 2px rgba(0, 0, 0, .4);
+  --ring: 0 0 0 3px rgba(99, 102, 241, .32);
 }
 
 [data-theme="light"] {
-  --color-background-body: var(--bg);
-  --color-background-surface: var(--surface);
-  --color-background-card: var(--surface);
-  --color-background-muted: var(--surface-2);
-  --color-text-primary: var(--text);
-  --color-text-secondary: var(--text-2);
-  --color-text-disabled: var(--muted);
-  --color-border: var(--border);
-  --color-accent: var(--accent);
-  --color-success: var(--good);
-  --color-error: var(--bad);
-  --color-warning: var(--warn);
+  color-scheme: light;
+
+  --bg: #f8f9fb;
+  --bg-wash: radial-gradient(900px 420px at 58% -120px, rgba(79, 70, 229, .06), transparent 72%);
+  --bg-side: #f2f4f8;
+  --surface: #ffffff;
+  --surface-2: #f4f6fa;
+  --surface-3: #eaedf4;
+  --code-bg: #111116;
+
+  --hover: rgba(15, 23, 42, .045);
+  --press: rgba(15, 23, 42, .08);
+
+  --border: #e4e6ec;
+  --border-strong: #cfd4e0;
+
+  --text: #0f172a;
+  --text-2: #334155;
+  --muted: #64748b;
+  --subtle: #94a3b8;
+
+  --accent: #4f46e5;
+  --accent-solid: #4f46e5;
+  --accent-solid-hover: #4338ca;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(79, 70, 229, .1);
+  --accent-line: rgba(79, 70, 229, .38);
+
+  --good: #059669;
+  --good-soft: #d1fae5;
+  --bad: #e11d48;
+  --bad-soft: #ffe4e6;
+  --warn: #d97706;
+  --warn-soft: #fef3c7;
+
+  --chart-ok: #10b981;
+  --chart-1: #4f46e5;
+  --chart-2: #0284c7;
+  --chart-3: #059669;
+  --chart-4: #db2777;
+  --chart-5: #d97706;
+
+  --glow: 0 4px 16px rgba(79, 70, 229, .22);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .05);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, .04), 0 0 0 1px rgba(15, 23, 42, .02);
+  --shadow-lg: 0 20px 48px rgba(15, 23, 42, .16), 0 4px 12px rgba(15, 23, 42, .06);
+  --scrim: rgba(15, 23, 42, .36);
+
+  --input-bg: #ffffff;
+  --seg-track: #e6e9f0;
+  --seg-thumb: #ffffff;
+  --seg-edge: 0 1px 2px rgba(15, 23, 42, .12), 0 0 0 .5px rgba(15, 23, 42, .06);
+  --ring: 0 0 0 3px rgba(79, 70, 229, .22);
 }

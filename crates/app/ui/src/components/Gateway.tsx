@@ -252,6 +252,13 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
   );
 }
 
+const SNIPPET_TABS: { value: Snippet; label: string }[] = [
+  { value: "powershell", label: "PowerShell" },
+  { value: "curl", label: "curl" },
+  { value: "python", label: "Python" },
+  { value: "node", label: "Node" },
+];
+
 export default function Gateway({
   config,
   models,
@@ -267,9 +274,6 @@ export default function Gateway({
   const modelIds = useMemo(() => (models?.data ?? []).map((m) => m.id), [models]);
   const [model, setModel] = useState("");
 
-  // The model list fits the API picked: chat APIs take /v1/models ids,
-  // embeddings and rerank take the providers' retrieval lists, each
-  // spelled provider/model as the route names it.
   const apiModels = useMemo(() => {
     if (api === "embeddings") {
       return (config?.providers ?? []).flatMap((p) =>
@@ -291,6 +295,7 @@ export default function Gateway({
   const url = `${base}${spec.path}`;
   const modelCount = modelIds.length;
   const providerCount = config?.providers.length ?? 0;
+  const code = snippet(lang, api, base, picked, "magpie");
 
   if (!config) {
     return (
@@ -306,40 +311,38 @@ export default function Gateway({
     <div className="gw">
       <Card flush className="gw-hero">
         <div className="gw-hero-row">
-          <div className="gw-hero-mark" aria-hidden="true">
-            <Server size={20} />
-          </div>
-          <div className="gw-hero-who">
-            <div className="gw-hero-name">
-              {t("gw.title")}{" "}
-              <Badge tone={healthy === false ? "bad" : "good"} dot>
-                {healthy === false ? t("topbar.offline") : t("topbar.online")}
-              </Badge>
+          <div className="gw-hero-left">
+            <div className="gw-hero-mark" aria-hidden="true">
+              <Server size={20} />
             </div>
-            <p className="gw-hero-sub">
-              {t("gw.heroSub", { models: modelCount, providers: providerCount })}
-            </p>
+            <div>
+              <div className="gw-hero-name">
+                {t("gw.title")}{" "}
+                <Badge tone={healthy === false ? "bad" : "good"} dot>
+                  {healthy === false ? t("topbar.offline") : t("topbar.online")}
+                </Badge>
+              </div>
+              <p className="gw-hero-sub">
+                {t("gw.heroSub", { models: modelCount, providers: providerCount })}
+              </p>
+            </div>
+          </div>
+          <div className="gw-endpoint-bar">
+            <code className="mono">{base}</code>
+            <CopyBtn text={base} label={t("gw.copy")} />
           </div>
         </div>
         <div className="gw-lan">
-          <div className="gw-lan-head">
-            <span>{t("gw.lanTitle")}</span>
-            <Segmented<string>
-              label={t("gw.lanLabel")}
-              value="local"
-              onChange={() => {}}
-              options={[
-                { value: "local", label: t("gw.lanLocal") },
-                { value: "lan", label: t("gw.lanLan"), disabled: true, title: t("gw.lanOff") },
-              ]}
-            />
-          </div>
-          <div className="gw-addr">
-            <span className="gw-addr-who">{t("gw.lanLocal")}</span>
-            <code className="gw-addr-url">{base}</code>
-            <CopyBtn text={base} label={t("gw.copy")} />
-          </div>
           <p className="gw-lan-note">{t("gw.lanNote")}</p>
+          <Segmented<string>
+            label={t("gw.lanLabel")}
+            value="local"
+            onChange={() => {}}
+            options={[
+              { value: "local", label: t("gw.lanLocal") },
+              { value: "lan", label: t("gw.lanLan"), disabled: true, title: t("gw.lanOff") },
+            ]}
+          />
         </div>
       </Card>
 
@@ -348,89 +351,89 @@ export default function Gateway({
         icon={<TerminalSquare size={16} />}
         description={t("gw.accessDesc")}
       >
-        <div className="gw-access">
-          <div className="gw-api-row">
-            <span className="gw-label">API</span>
-            <Segmented<ApiKind>
-              label={t("gw.apiLabel")}
-              value={api}
-              onChange={(v) => {
-                setApi(v);
-                setModel("");
-              }}
-              options={(Object.keys(APIS) as ApiKind[]).map((k) => ({
-                value: k,
-                label: APIS[k].label,
-              }))}
-            />
-          </div>
-          <p className="gw-blurb">{t(spec.blurb)}</p>
+        <Segmented<ApiKind>
+          label={t("gw.apiLabel")}
+          value={api}
+          onChange={(v) => {
+            setApi(v);
+            setModel("");
+          }}
+          options={(Object.keys(APIS) as ApiKind[]).map((k) => ({
+            value: k,
+            label: APIS[k].label,
+          }))}
+        />
 
-          <div className="gw-field">
-            <span className="gw-label">Base URL</span>
-            <div className="gw-value">
-              <code>{url}</code>
-              <CopyBtn text={url} label={t("gw.copy")} />
-            </div>
-            {spec.envBase ? (
-              <p className="gw-hint">
-                {t("gw.fillEnv", { env: spec.envBase })}
-              </p>
-            ) : null}
-          </div>
+        <div className="gw-studio">
+          <div className="gw-config">
+            <p className="gw-blurb">{t(spec.blurb)}</p>
 
-          {spec.envKey ? (
             <div className="gw-field">
-              <span className="gw-label">{t("gw.keyLabel")}</span>
+              <span className="gw-label">Base URL</span>
               <div className="gw-value">
-                <code>magpie</code>
-                <CopyBtn text="magpie" label={t("gw.copy")} />
+                <code>{url}</code>
+                <CopyBtn text={url} label={t("gw.copy")} />
+              </div>
+              {spec.envBase ? (
+                <p className="gw-hint">{t("gw.fillEnv", { env: spec.envBase })}</p>
+              ) : null}
+            </div>
+
+            {spec.envKey ? (
+              <div className="gw-field">
+                <span className="gw-label">{t("gw.keyLabel")}</span>
+                <div className="gw-value">
+                  <code>magpie</code>
+                  <CopyBtn text="magpie" label={t("gw.copy")} />
+                </div>
+                <p className="gw-hint">{t("gw.keyHint", { env: spec.envKey })}</p>
+              </div>
+            ) : null}
+
+            <div className="gw-field">
+              <span className="gw-label">{t("gw.modelLabel")}</span>
+              <div className="gw-value">
+                <Select
+                  mono
+                  value={picked}
+                  onChange={setModel}
+                  aria-label={t("gw.modelLabel")}
+                  key={api}
+                  options={
+                    apiModels.length === 0
+                      ? [{ value: picked, label: picked }]
+                      : apiModels.map((id) => ({ value: id, label: id }))
+                  }
+                />
               </div>
               <p className="gw-hint">
-                {t("gw.keyHint", { env: spec.envKey })}
+                {api === "embeddings" || api === "rerank"
+                  ? t(apiModels.length ? "gw.modelHintRetrieval" : "gw.modelHintRetrievalEmpty")
+                  : t("gw.modelHint")}
               </p>
             </div>
-          ) : null}
-
-          <div className="gw-field">
-            <span className="gw-label">{t("gw.modelLabel")}</span>
-            <div className="gw-value">
-              <Select
-                mono
-                value={picked}
-                onChange={setModel}
-                aria-label={t("gw.modelLabel")}
-                key={api}
-                options={
-                  apiModels.length === 0
-                    ? [{ value: picked, label: picked }]
-                    : apiModels.map((id) => ({ value: id, label: id }))
-                }
-              />
-            </div>
-            <p className="gw-hint">
-              {api === "embeddings" || api === "rerank"
-                ? t(apiModels.length ? "gw.modelHintRetrieval" : "gw.modelHintRetrievalEmpty")
-                : t("gw.modelHint")}
-            </p>
           </div>
 
-          <div className="gw-field">
-            <span className="gw-label">{t("gw.exampleLabel")}</span>
-            <Segmented<Snippet>
-              label={t("gw.exampleLabel")}
-              value={lang}
-              onChange={setLang}
-              options={[
-                { value: "powershell", label: "PowerShell" },
-                { value: "curl", label: "curl" },
-                { value: "python", label: "Python" },
-                { value: "node", label: "Node" },
-              ]}
-            />
+          <div className="gw-terminal" role="region" aria-label={t("gw.exampleLabel")}>
+            <div className="gw-term-head">
+              <div className="gw-term-tabs" role="tablist" aria-label={t("gw.exampleLabel")}>
+                {SNIPPET_TABS.map((tab) => (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={lang === tab.value}
+                    className="gw-term-tab"
+                    onClick={() => setLang(tab.value)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <CopyBtn text={code} label={t("gw.copy")} />
+            </div>
             <pre className="gw-code">
-              <code>{snippet(lang, api, base, picked, "magpie")}</code>
-              <CopyBtn text={snippet(lang, api, base, picked, "magpie")} label={t("gw.copy")} />
+              <code>{code}</code>
             </pre>
           </div>
         </div>
